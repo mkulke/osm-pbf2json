@@ -10,6 +10,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let path = &args[1];
     let file = File::open(path)?;
     // osm::process(file)?;
-    osm::process_without_clone(file)?;
+    let groups = filter::parse("amenity~theatre");
+    osm::process_without_clone(file, &groups)?;
     Ok(())
 }

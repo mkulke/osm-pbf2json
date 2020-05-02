@@ -1,14 +1,14 @@
-use osmpbfreader::objects::{Node, NodeId, OsmObj, Tags};
+use osmpbfreader::objects::{OsmObj, Tags};
 
 #[derive(PartialEq, Debug, Clone)]
-enum Condition {
+pub enum Condition {
     TagPresence(&'static str),
     ValueMatch(&'static str, &'static str),
 }
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Group {
-    conditions: Vec<Condition>,
+    pub conditions: Vec<Condition>,
 }
 
 fn parse_condition(condition_str: &'static str) -> Condition {
@@ -44,7 +44,7 @@ fn check_group(tags: &Tags, group: &Group) -> bool {
     group.conditions.iter().all(|c| check_condition(tags, c))
 }
 
-pub fn filter(obj: &OsmObj, groups: &Vec<Group>) -> bool {
+pub fn filter(obj: &OsmObj, groups: &[Group]) -> bool {
     let tags = obj.tags();
     groups.iter().any(|c| check_group(tags, c))
 }
@@ -52,6 +52,7 @@ pub fn filter(obj: &OsmObj, groups: &Vec<Group>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use osmpbfreader::objects::{Node, NodeId};
 
     fn new_node() -> Node {
         let tags = Tags::new();
@@ -73,14 +74,14 @@ mod tests {
         let node = new_node();
         let obj = OsmObj::Node(node);
 
-        assert_eq!(filter(&obj, &vec![group.clone()]), false);
+        assert_eq!(filter(&obj, &[group.clone()]), false);
 
         let mut node = new_node();
         node.tags
             .insert("amenity".to_string(), "theatre".to_string());
         let obj = OsmObj::Node(node);
 
-        assert_eq!(filter(&obj, &vec![group.clone()]), true);
+        assert_eq!(filter(&obj, &[group]), true);
     }
 
     #[test]
@@ -93,13 +94,13 @@ mod tests {
         node.tags
             .insert("amenity".to_string(), "theatre".to_string());
         let obj = OsmObj::Node(node);
-        assert_eq!(filter(&obj, &vec![group.clone()]), true);
+        assert_eq!(filter(&obj, &[group.clone()]), true);
 
         let mut node = new_node();
         node.tags
             .insert("amenity".to_string(), "cinema".to_string());
         let obj = OsmObj::Node(node);
-        assert_eq!(filter(&obj, &vec![group.clone()]), false);
+        assert_eq!(filter(&obj, &[group]), false);
     }
 
     #[test]
@@ -118,7 +119,7 @@ mod tests {
             .insert("name".to_string(), "Waldbühne".to_string());
         let obj = OsmObj::Node(node);
 
-        assert_eq!(filter(&obj, &vec![group_1, group_2]), true);
+        assert_eq!(filter(&obj, &[group_1, group_2]), true);
     }
 
     #[test]
@@ -136,12 +137,12 @@ mod tests {
             .insert("name".to_string(), "Waldbühne".to_string());
         let obj = OsmObj::Node(node);
 
-        assert_eq!(filter(&obj, &vec![group]), true);
+        assert_eq!(filter(&obj, &[group]), true);
 
-        let conditions = vec![condition_2.clone(), condition_3];
+        let conditions = vec![condition_2, condition_3];
         let group = Group { conditions };
 
-        assert_eq!(filter(&obj, &vec![group]), false);
+        assert_eq!(filter(&obj, &[group]), false);
     }
 
     #[test]
@@ -150,7 +151,7 @@ mod tests {
         let conditions = vec![condition];
         let group = Group { conditions };
 
-        assert_eq!(parse("amenity"), vec![group]);
+        assert_eq!(parse("amenity"), [group]);
     }
 
     #[test]
@@ -164,7 +165,7 @@ mod tests {
             conditions: vec![condition_2],
         };
 
-        assert_eq!(parse("amenity,highway"), vec![group_1, group_2]);
+        assert_eq!(parse("amenity,highway"), [group_1, group_2]);
     }
 
     #[test]

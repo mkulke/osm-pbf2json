@@ -1,3 +1,4 @@
+use super::filter::{filter, Group};
 use geo::prelude::*;
 use geo_types::LineString;
 use osmpbfreader::objects::{NodeId, OsmId, OsmObj, Tags};
@@ -47,7 +48,7 @@ struct JSONWay {
     bounds: Option<Bounds>,
 }
 
-fn get_line_string(objs: &BTreeMap<OsmId, OsmObj>, node_ids: &Vec<NodeId>) -> LineString<f64> {
+fn get_line_string(objs: &BTreeMap<OsmId, OsmObj>, node_ids: &[NodeId]) -> LineString<f64> {
     let coordinates: Vec<(f64, f64)> = node_ids
         .iter()
         .filter_map(|id| {
@@ -59,7 +60,7 @@ fn get_line_string(objs: &BTreeMap<OsmId, OsmObj>, node_ids: &Vec<NodeId>) -> Li
     coordinates.into()
 }
 
-fn get_bounds(objs: &BTreeMap<OsmId, OsmObj>, node_ids: &Vec<NodeId>) -> Option<Bounds> {
+fn get_bounds(objs: &BTreeMap<OsmId, OsmObj>, node_ids: &[NodeId]) -> Option<Bounds> {
     let line_string = get_line_string(objs, node_ids);
     let rect = line_string.bounding_rect()?;
     Some(Bounds {
@@ -70,7 +71,7 @@ fn get_bounds(objs: &BTreeMap<OsmId, OsmObj>, node_ids: &Vec<NodeId>) -> Option<
     })
 }
 
-fn get_centroid(objs: &BTreeMap<OsmId, OsmObj>, node_ids: &Vec<NodeId>) -> Option<Location> {
+fn get_centroid(objs: &BTreeMap<OsmId, OsmObj>, node_ids: &[NodeId]) -> Option<Location> {
     let line_string = get_line_string(objs, node_ids);
     let point = line_string.centroid()?;
     Some(Location {
@@ -94,13 +95,16 @@ fn build_meta_map(objs: &BTreeMap<OsmId, OsmObj>) -> BTreeMap<OsmId, Meta> {
     lookup_map
 }
 
-pub fn process_without_clone(file: impl Read + Seek) -> Result<(), Box<dyn Error>> {
+pub fn process_without_clone(
+    file: impl Read + Seek,
+    groups: &[Group],
+) -> Result<(), Box<dyn Error>> {
     let mut pbf = OsmPbfReader::new(file);
-    let objs = pbf.get_objs_and_deps(|obj| obj.tags().contains_key("amenity"))?;
+    let objs = pbf.get_objs_and_deps(|obj| filter(obj, groups))?;
     let mut meta_map = build_meta_map(&objs);
 
     for (id, obj) in objs {
-        if !obj.tags().contains_key("amenity") {
+        if !filter(&obj, groups) {
             continue;
         }
 
@@ -136,35 +140,39 @@ pub fn process_without_clone(file: impl Read + Seek) -> Result<(), Box<dyn Error
     Ok(())
 }
 
-pub fn process(file: impl Seek + Read) -> Result<(), Box<dyn Error>> {
-    let mut pbf = OsmPbfReader::new(file);
-    let objs = pbf.get_objs_and_deps(|obj| obj.tags().contains_key("amenity"))?;
-    for (_id, obj) in &objs {
-        match obj {
-            OsmObj::Node(node) => {
-                let jn = JSONNode {
-                    osm_type: "node",
-                    id: node.id.0,
-                    lat: node.lat(),
-                    lon: node.lon(),
-                    tags: node.tags.clone(),
-                };
-                println!("{}", to_string(&jn).unwrap());
-            }
-            OsmObj::Way(way) => {
-                let centroid = get_centroid(&objs, &way.nodes);
-                let bounds = get_bounds(&objs, &way.nodes);
-                let jw = JSONWay {
-                    osm_type: "way",
-                    id: way.id.0,
-                    tags: way.tags.clone(),
-                    centroid,
-                    bounds,
-                };
-                println!("{}", to_string(&jw).unwrap());
-            }
-            _ => (),
-        }
-    }
-    Ok(())
-}
+// pub fn process(file: impl Seek + Read, groups: &[Group]) -> Result<(), Box<dyn Error>> {
+//     let mut pbf = OsmPbfReader::new(file);
+//     let objs = pbf.get_objs_and_deps(|obj| filter(obj, groups))?;
+//     for obj in objs.values() {
+//         if !filter(obj, groups) {
+//             continue;
+//         }
+
+//         match obj {
+//             OsmObj::Node(node) => {
+//                 let jn = JSONNode {
+//                     osm_type: "node",
+//                     id: node.id.0,
+//                     lat: node.lat(),
+//                     lon: node.lon(),
+//                     tags: node.tags.clone(),
+//                 };
+//                 println!("{}", to_string(&jn).unwrap());
+//             }
+//             OsmObj::Way(way) => {
+//                 let centroid = get_centroid(&objs, &way.nodes);
+//                 let bounds = get_bounds(&objs, &way.nodes);
+//                 let jw = JSONWay {
+//                     osm_type: "way",
+//                     id: way.id.0,
+//                     tags: way.tags.clone(),
+//                     centroid,
+//                     bounds,
+//                 };
+//                 println!("{}", to_string(&jw).unwrap());
+//             }
+//             _ => (),
+//         }
+//     }
+//     Ok(())
+// }
