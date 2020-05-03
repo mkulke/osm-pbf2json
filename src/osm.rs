@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::to_string;
 use std::collections::BTreeMap;
 use std::error::Error;
+use std::io::{self, Write};
 use std::io::{Read, Seek};
 
 #[derive(Serialize, Deserialize)]
@@ -103,6 +104,9 @@ pub fn process_without_clone(
     let objs = pbf.get_objs_and_deps(|obj| filter(obj, groups))?;
     let mut meta_map = build_meta_map(&objs);
 
+    let stdout = io::stdout();
+    let mut handle = io::BufWriter::new(stdout);
+
     for (id, obj) in objs {
         if !filter(&obj, groups) {
             continue;
@@ -117,7 +121,8 @@ pub fn process_without_clone(
                     lon: node.lon(),
                     tags: node.tags,
                 };
-                println!("{}", to_string(&jn).unwrap());
+                let jn_str = to_string(&jn)?;
+                writeln!(handle, "{}", jn_str)?;
             }
             OsmObj::Way(way) => {
                 let Meta { centroid, bounds } = meta_map.remove(&id).unwrap_or(Meta {
@@ -132,7 +137,8 @@ pub fn process_without_clone(
                     centroid,
                     bounds,
                 };
-                println!("{}", to_string(&jw).unwrap());
+                let jw_str = to_string(&jw)?;
+                writeln!(handle, "{}", jw_str)?;
             }
             _ => (),
         }
