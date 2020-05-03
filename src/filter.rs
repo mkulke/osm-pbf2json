@@ -2,8 +2,8 @@ use osmpbfreader::objects::{OsmObj, Tags};
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum Condition {
-    TagPresence(&'static str),
-    ValueMatch(&'static str, &'static str),
+    TagPresence(String),
+    ValueMatch(String, String),
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -11,31 +11,31 @@ pub struct Group {
     pub conditions: Vec<Condition>,
 }
 
-fn parse_condition(condition_str: &'static str) -> Condition {
+fn parse_condition(condition_str: &str) -> Condition {
     let split_str: Vec<&str> = condition_str.splitn(2, '~').collect();
     if split_str.len() < 2 {
-        Condition::TagPresence(condition_str)
+        Condition::TagPresence(condition_str.to_string())
     } else {
         let key = split_str[0];
         let value = split_str[1];
-        Condition::ValueMatch(key, value)
+        Condition::ValueMatch(key.to_string(), value.to_string())
     }
 }
 
-fn parse_group(group_str: &'static str) -> Group {
+fn parse_group(group_str: &str) -> Group {
     let condition_strs: Vec<&str> = group_str.split('+').collect();
     let conditions = condition_strs.into_iter().map(parse_condition).collect();
     Group { conditions }
 }
 
-pub fn parse(selector_str: &'static str) -> Vec<Group> {
+pub fn parse(selector_str: String) -> Vec<Group> {
     let group_strs: Vec<&str> = selector_str.split(',').collect();
     group_strs.into_iter().map(parse_group).collect()
 }
 
 fn check_condition(tags: &Tags, condition: &Condition) -> bool {
     match condition {
-        Condition::TagPresence(key) => tags.contains_key(*key),
+        Condition::TagPresence(key) => tags.contains_key(key),
         Condition::ValueMatch(key, value) => tags.contains(key, value),
     }
 }
@@ -67,7 +67,7 @@ mod tests {
 
     #[test]
     fn filter_single_group() {
-        let condition = Condition::TagPresence("amenity");
+        let condition = Condition::TagPresence("amenity".to_string());
         let conditions = vec![condition];
         let group = Group { conditions };
 
@@ -86,7 +86,7 @@ mod tests {
 
     #[test]
     fn filter_value_match() {
-        let condition = Condition::ValueMatch("amenity", "theatre");
+        let condition = Condition::ValueMatch("amenity".to_string(), "theatre".to_string());
         let conditions = vec![condition];
         let group = Group { conditions };
 
@@ -105,10 +105,10 @@ mod tests {
 
     #[test]
     fn filter_multiple_groups() {
-        let condition = Condition::TagPresence("amenity");
+        let condition = Condition::TagPresence("amenity".to_string());
         let conditions = vec![condition];
         let group_1 = Group { conditions };
-        let condition = Condition::TagPresence("architect");
+        let condition = Condition::TagPresence("architect".to_string());
         let conditions = vec![condition];
         let group_2 = Group { conditions };
 
@@ -124,9 +124,9 @@ mod tests {
 
     #[test]
     fn filter_multiple_conditions() {
-        let condition_1 = Condition::TagPresence("amenity");
-        let condition_2 = Condition::TagPresence("name");
-        let condition_3 = Condition::TagPresence("architect");
+        let condition_1 = Condition::TagPresence("amenity".to_string());
+        let condition_2 = Condition::TagPresence("name".to_string());
+        let condition_3 = Condition::TagPresence("architect".to_string());
         let conditions = vec![condition_1, condition_2.clone()];
         let group = Group { conditions };
 
@@ -147,17 +147,17 @@ mod tests {
 
     #[test]
     fn parse_single_group() {
-        let condition = Condition::TagPresence("amenity");
+        let condition = Condition::TagPresence("amenity".to_string());
         let conditions = vec![condition];
         let group = Group { conditions };
 
-        assert_eq!(parse("amenity"), [group]);
+        assert_eq!(parse("amenity".to_string()), [group]);
     }
 
     #[test]
     fn parse_multiple_groups() {
-        let condition_1 = Condition::TagPresence("amenity");
-        let condition_2 = Condition::TagPresence("highway");
+        let condition_1 = Condition::TagPresence("amenity".to_string());
+        let condition_2 = Condition::TagPresence("highway".to_string());
         let group_1 = Group {
             conditions: vec![condition_1],
         };
@@ -165,25 +165,25 @@ mod tests {
             conditions: vec![condition_2],
         };
 
-        assert_eq!(parse("amenity,highway"), [group_1, group_2]);
+        assert_eq!(parse("amenity,highway".to_string()), [group_1, group_2]);
     }
 
     #[test]
     fn parse_multiple_conditions() {
-        let condition_1 = Condition::TagPresence("amenity");
-        let condition_2 = Condition::TagPresence("highway");
+        let condition_1 = Condition::TagPresence("amenity".to_string());
+        let condition_2 = Condition::TagPresence("highway".to_string());
         let conditions = vec![condition_1, condition_2];
         let group = Group { conditions };
 
-        assert_eq!(parse("amenity+highway"), vec![group]);
+        assert_eq!(parse("amenity+highway".to_string()), vec![group]);
     }
 
     #[test]
     fn parse_value_match() {
-        let condition = Condition::ValueMatch("amenity", "theatre");
+        let condition = Condition::ValueMatch("amenity".to_string(), "theatre".to_string());
         let conditions = vec![condition];
         let group = Group { conditions };
 
-        assert_eq!(parse("amenity~theatre"), vec![group]);
+        assert_eq!(parse("amenity~theatre".to_string()), vec![group]);
     }
 }
