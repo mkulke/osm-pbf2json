@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::fs::File;
+use std::io;
 use structopt::StructOpt;
 
 mod filter;
@@ -17,7 +18,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let args = Cli::from_args();
     let file = File::open(args.path)?;
     let groups = filter::parse(args.tags);
-    osm::process_without_clone(file, &groups)?;
+    let stdout = io::stdout();
+    let handle = io::BufWriter::new(stdout);
+    osm::process_without_clone(file, handle, &groups)?;
     // osm::process(file, &groups)?;
     Ok(())
 }

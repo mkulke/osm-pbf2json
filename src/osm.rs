@@ -7,8 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::to_string;
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::io::{self, Write};
-use std::io::{Read, Seek};
+use std::io::{Read, Seek, Write};
 
 #[derive(Serialize, Deserialize)]
 struct JSONNode {
@@ -98,14 +97,12 @@ fn build_meta_map(objs: &BTreeMap<OsmId, OsmObj>) -> BTreeMap<OsmId, Meta> {
 
 pub fn process_without_clone(
     file: impl Read + Seek,
+    mut writer: impl Write,
     groups: &[Group],
 ) -> Result<(), Box<dyn Error>> {
     let mut pbf = OsmPbfReader::new(file);
     let objs = pbf.get_objs_and_deps(|obj| filter(obj, groups))?;
     let mut meta_map = build_meta_map(&objs);
-
-    let stdout = io::stdout();
-    let mut handle = io::BufWriter::new(stdout);
 
     for (id, obj) in objs {
         if !filter(&obj, groups) {
@@ -122,7 +119,7 @@ pub fn process_without_clone(
                     tags: node.tags,
                 };
                 let jn_str = to_string(&jn)?;
-                writeln!(handle, "{}", jn_str)?;
+                writeln!(writer, "{}", jn_str)?;
             }
             OsmObj::Way(way) => {
                 let Meta { centroid, bounds } = meta_map.remove(&id).unwrap_or(Meta {
@@ -138,7 +135,7 @@ pub fn process_without_clone(
                     bounds,
                 };
                 let jw_str = to_string(&jw)?;
-                writeln!(handle, "{}", jw_str)?;
+                writeln!(writer, "{}", jw_str)?;
             }
             _ => (),
         }
