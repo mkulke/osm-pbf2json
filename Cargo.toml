@@ -28,3 +28,4 @@ path = "src/osm/mod.rs"
 [[bin]]
 name = "osm_pbf2json"
 path = "src/main.rs"
+test = false
