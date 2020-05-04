@@ -1,4 +1,4 @@
-use super::filter::{filter, Group};
+use filter::{filter, Group};
 use geo::prelude::*;
 use geo_types::LineString;
 use osmpbfreader::objects::{NodeId, OsmId, OsmObj, Tags};
@@ -8,6 +8,8 @@ use serde_json::to_string;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::io::{Read, Seek, Write};
+
+pub mod filter;
 
 #[derive(Serialize, Deserialize)]
 struct JSONNode {
@@ -31,11 +33,6 @@ struct Bounds {
     n: f64,
     s: f64,
     w: f64,
-}
-
-struct Meta {
-    centroid: Option<Location>,
-    bounds: Option<Bounds>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -80,32 +77,15 @@ fn get_centroid(objs: &BTreeMap<OsmId, OsmObj>, node_ids: &[NodeId]) -> Option<L
     })
 }
 
-fn build_meta_map(objs: &BTreeMap<OsmId, OsmObj>) -> BTreeMap<OsmId, Meta> {
-    let lookup_map: BTreeMap<OsmId, Meta> = objs
-        .iter()
-        .filter_map(|(id, obj)| {
-            let way = obj.way()?;
-            let nodes = &way.nodes;
-            let centroid = get_centroid(objs, nodes);
-            let bounds = get_bounds(objs, nodes);
-            let meta = Meta { centroid, bounds };
-            Some((*id, meta))
-        })
-        .collect();
-    lookup_map
-}
-
-pub fn process_without_clone(
-    file: impl Read + Seek,
+pub fn process(
+    file: impl Seek + Read,
     mut writer: impl Write,
     groups: &[Group],
 ) -> Result<(), Box<dyn Error>> {
     let mut pbf = OsmPbfReader::new(file);
     let objs = pbf.get_objs_and_deps(|obj| filter(obj, groups))?;
-    let mut meta_map = build_meta_map(&objs);
-
-    for (id, obj) in objs {
-        if !filter(&obj, groups) {
+    for obj in objs.values() {
+        if !filter(obj, groups) {
             continue;
         }
 
@@ -116,21 +96,18 @@ pub fn process_without_clone(
                     id: node.id.0,
                     lat: node.lat(),
                     lon: node.lon(),
-                    tags: node.tags,
+                    tags: node.tags.clone(),
                 };
                 let jn_str = to_string(&jn)?;
                 writeln!(writer, "{}", jn_str)?;
             }
             OsmObj::Way(way) => {
-                let Meta { centroid, bounds } = meta_map.remove(&id).unwrap_or(Meta {
-                    centroid: None,
-                    bounds: None,
-                });
-
+                let centroid = get_centroid(&objs, &way.nodes);
+                let bounds = get_bounds(&objs, &way.nodes);
                 let jw = JSONWay {
                     osm_type: "way",
                     id: way.id.0,
-                    tags: way.tags,
+                    tags: way.tags.clone(),
                     centroid,
                     bounds,
                 };
@@ -142,40 +119,3 @@ pub fn process_without_clone(
     }
     Ok(())
 }
-
-// pub fn process(file: impl Seek + Read, groups: &[Group]) -> Result<(), Box<dyn Error>> {
-//     let mut pbf = OsmPbfReader::new(file);
-//     let objs = pbf.get_objs_and_deps(|obj| filter(obj, groups))?;
-//     for obj in objs.values() {
-//         if !filter(obj, groups) {
-//             continue;
-//         }
-
-//         match obj {
-//             OsmObj::Node(node) => {
-//                 let jn = JSONNode {
-//                     osm_type: "node",
-//                     id: node.id.0,
-//                     lat: node.lat(),
-//                     lon: node.lon(),
-//                     tags: node.tags.clone(),
-//                 };
-//                 println!("{}", to_string(&jn).unwrap());
-//             }
-//             OsmObj::Way(way) => {
-//                 let centroid = get_centroid(&objs, &way.nodes);
-//                 let bounds = get_bounds(&objs, &way.nodes);
-//                 let jw = JSONWay {
-//                     osm_type: "way",
-//                     id: way.id.0,
-//                     tags: way.tags.clone(),
-//                     centroid,
-//                     bounds,
-//                 };
-//                 println!("{}", to_string(&jw).unwrap());
-//             }
-//             _ => (),
-//         }
-//     }
-//     Ok(())
-// }

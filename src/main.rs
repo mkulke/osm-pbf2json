@@ -3,7 +3,6 @@ use std::fs::File;
 use std::io;
 use structopt::StructOpt;
 
-mod filter;
 mod osm;
 
 #[derive(StructOpt)]
@@ -17,10 +16,9 @@ struct Cli {
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Cli::from_args();
     let file = File::open(args.path)?;
-    let groups = filter::parse(args.tags);
+    let groups = osm::filter::parse(args.tags);
     let stdout = io::stdout();
     let handle = io::BufWriter::new(stdout);
-    osm::process_without_clone(file, handle, &groups)?;
-    // osm::process(file, &groups)?;
+    osm::process(file, handle, &groups)?;
     Ok(())
 }

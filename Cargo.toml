@@ -1,5 +1,5 @@
 [package]
-name = "osm-pbf2json"
+name = "osm_pbf2json"
 version = "0.1.0"
 authors = ["kulkema <magnus.kulke@moovel.com>"]
 edition = "2018"
@@ -13,3 +13,18 @@ serde_json = "1.0"
 osmpbfreader = "0.13"
 geo = "0.13"
 geo-types = "0.5"
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "osm"
+harness = false
+
+[lib]
+name = "osm_pbf2json"
+path = "src/osm/mod.rs"
+
+[[bin]]
+name = "osm_pbf2json"
+path = "src/main.rs"
