@@ -1,6 +1,6 @@
 use self::geo::{get_geo_info, Bounds, Location};
 use filter::{filter, Group};
-use osmpbfreader::objects::{NodeId, OsmId, OsmObj, Tags};
+use osmpbfreader::objects::{OsmId, OsmObj, Relation, Tags, Way};
 use osmpbfreader::OsmPbfReader;
 use serde::{Deserialize, Serialize};
 use serde_json::to_string;
@@ -31,15 +31,33 @@ struct JSONWay {
     bounds: Option<Bounds>,
 }
 
-fn get_coordinates(objs: &BTreeMap<OsmId, OsmObj>, node_ids: &[NodeId]) -> Vec<(f64, f64)> {
-    node_ids
-        .iter()
-        .filter_map(|id| {
-            let obj = objs.get(&OsmId::Node(*id))?;
-            obj.node()
-        })
-        .map(|node| (node.lon(), node.lat()))
-        .collect()
+impl OsmExt for Way {
+    fn get_coordinates(&self, objs: &BTreeMap<OsmId, OsmObj>) -> Vec<(f64, f64)> {
+        self.nodes
+            .iter()
+            .filter_map(|id| {
+                let obj = objs.get(&OsmId::Node(*id))?;
+                obj.node()
+            })
+            .map(|node| (node.lon(), node.lat()))
+            .collect()
+    }
+}
+
+impl OsmExt for Relation {
+    fn get_coordinates(&self, objs: &BTreeMap<OsmId, OsmObj>) -> Vec<(f64, f64)> {
+        let mut ref_objs = vec![];
+        for osm_ref in &self.refs {
+            if let Some(obj) = objs.get(&osm_ref.member) {
+                ref_objs.push(obj);
+            }
+        }
+        unimplemented!();
+    }
+}
+
+trait OsmExt {
+    fn get_coordinates(&self, objs: &BTreeMap<OsmId, OsmObj>) -> Vec<(f64, f64)>;
 }
 
 pub fn process(
@@ -68,7 +86,7 @@ pub fn process(
                 writeln!(writer, "{}", jn_str)?;
             }
             OsmObj::Way(way) => {
-                let coordinates = get_coordinates(&objs, &way.nodes);
+                let coordinates = way.get_coordinates(&objs);
                 let (centroid, bounds) = get_geo_info(coordinates);
                 let jw = JSONWay {
                     osm_type: "way",
@@ -80,7 +98,7 @@ pub fn process(
                 let jw_str = to_string(&jw)?;
                 writeln!(writer, "{}", jw_str)?;
             }
-            _ => (),
+            OsmObj::Relation(_relation) => (),
         }
     }
     Ok(())
