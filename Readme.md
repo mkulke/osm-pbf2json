@@ -32,6 +32,12 @@ docker run \
 
 ## Run
 
+You have to specify a query via `--tags` or `-t`, the syntax is rather simple:
+
+By stating a key (`-t amenity`) it will select all entities which are tagged using that key. To further narrow down the results, a specific value can be given using a `~` field separator (`-t 'amenity~fountain'`). To check the presence of multiple tags for the same entity, statements can be combined using the `+` operator (`-t 'amenity~fountain+tourism'`). Finally, options can be specified by concatenating groups of statements with `,` (`-t 'amenity~fountain+tourism,amenity~townhall'`). If an entity matches the criteria of either group it will be included in the output.
+
+A clipped PBF sample is contained in the `./benches` folder.
+
 ```
 ./target/release/osm_pbf2json -t="addr:housenumber+addr:street+addr:postcode~10178" berlin.pbf | tail -3
 {"id":544604702,"type":"way","tags":{"addr:city":"Berlin","addr:country":"DE","addr:housenumber":"17","addr:postcode":"10178","addr:street":"Sophienstraße","addr:suburb":"Mitte","building":"residential","heritage":"4","heritage:operator":"lda","lda:criteria":"Ensembleteil","ref:lda":"09080182"},"centroid":{"lat":52.52571770265661,"lon":13.401513737828404},"bounds":{"e":13.4015869,"n":52.525649699999995,"s":52.5254975,"w":13.4013709}}
