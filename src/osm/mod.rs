@@ -64,7 +64,7 @@ impl OsmExt for Relation {
                 let coordinates = match obj {
                     OsmObj::Node(node) => vec![(node.lon(), node.lat())],
                     OsmObj::Way(way) => way.get_coordinates(objs),
-                    OsmObj::Relation(_) => unimplemented!(),
+                    OsmObj::Relation(rel) => rel.get_coordinates(objs),
                 };
                 Some(coordinates)
             })
@@ -140,7 +140,7 @@ mod get_coordinates {
     use osmpbfreader::objects::{Node, NodeId, Ref, Relation, RelationId, Tags};
     use std::collections::BTreeMap;
 
-    fn get_node(id: NodeId, lng: i32, lat: i32) -> Node {
+    fn create_node(id: NodeId, lng: i32, lat: i32) -> Node {
         let tags = Tags::new();
         let decimicro_lat = lat * 10_000_000;
         let decimicro_lon = lng * 10_000_000;
@@ -152,13 +152,38 @@ mod get_coordinates {
         }
     }
 
+    fn create_relation(id: RelationId, refs: Vec<Ref>) -> Relation {
+        let tags = Tags::new();
+        Relation { id, tags, refs }
+    }
+
+    fn add_nodes(
+        coordinates: Vec<(i32, i32)>,
+        obj_map: &mut BTreeMap<OsmId, OsmObj>,
+        node_ids: &mut Vec<NodeId>,
+    ) {
+        for (i, (lng, lat)) in coordinates.iter().enumerate() {
+            let node_id = NodeId((i as i64) + 1);
+            let node = create_node(node_id, *lng, *lat);
+            obj_map.insert(node_id.into(), node.into());
+            node_ids.push(node_id);
+        }
+    }
+
+    fn create_refs(ids: Vec<OsmId>) -> Vec<Ref> {
+        ids.into_iter()
+            .map(|id| Ref {
+                member: id,
+                role: "something".to_string(),
+            })
+            .collect()
+    }
+
     #[test]
     fn relation_without_refs() {
         let obj_map = BTreeMap::new();
         let id = RelationId(42);
-        let tags = Tags::new();
-        let refs = vec![];
-        let rel = Relation { id, tags, refs };
+        let rel = create_relation(id, vec![]);
         let coordinates = rel.get_coordinates(&obj_map);
         assert_eq!(coordinates.len(), 0);
     }
@@ -166,24 +191,19 @@ mod get_coordinates {
     #[test]
     fn relation_with_one_node() {
         let node_id = NodeId(41);
-        let node = get_node(node_id, 5, 49);
+        let node = create_node(node_id, 5, 49);
         let mut obj_map = BTreeMap::new();
         obj_map.insert(node_id.into(), node.into());
         let id = RelationId(42);
-        let tags = Tags::new();
-        let node_ref = Ref {
-            member: node_id.into(),
-            role: "something".to_string(),
-        };
-        let refs = vec![node_ref];
-        let rel = Relation { id, tags, refs };
+        let refs = create_refs(vec![node_id.into()]);
+        let rel = create_relation(id, refs);
         let coordinates = rel.get_coordinates(&obj_map);
         assert_eq!(coordinates, vec![(5., 49.)]);
     }
 
     #[test]
     fn relation_with_multiple_nodes() {
-        let coords = vec![(6, 52), (6, 50), (8, 50), (8, 52), (7, 51)];
+        let coordinates = vec![(6, 52), (6, 50), (8, 50), (8, 52), (7, 51)];
 
         // Node 4 is located in the middle of a grid
         // and should hence be ignored.
@@ -194,25 +214,13 @@ mod get_coordinates {
         //
         // 1     2
 
-        let mut obj_map: BTreeMap<OsmId, OsmObj> = BTreeMap::new();
-        let mut node_ids: Vec<NodeId> = vec![];
-        for (i, coord) in coords.iter().enumerate() {
-            let (lng, lat) = coord;
-            let node_id = NodeId((i as i64) + 1);
-            let node = get_node(node_id, *lng, *lat);
-            obj_map.insert(node_id.into(), node.into());
-            node_ids.push(node_id);
-        }
+        let mut obj_map = BTreeMap::new();
+        let mut node_ids = vec![];
+        add_nodes(coordinates, &mut obj_map, &mut node_ids);
+
         let id = RelationId(42);
-        let tags = Tags::new();
-        let refs = node_ids
-            .into_iter()
-            .map(|node_id| Ref {
-                member: node_id.into(),
-                role: "something".to_string(),
-            })
-            .collect();
-        let rel = Relation { id, tags, refs };
+        let refs = create_refs(node_ids.into_iter().map(NodeId::into).collect());
+        let rel = create_relation(id, refs);
         let coordinates = rel.get_coordinates(&obj_map);
 
         // We expect a simplified closed rectangle.
@@ -226,6 +234,34 @@ mod get_coordinates {
         assert_eq!(
             coordinates,
             vec![(6., 50.), (8., 50.), (8., 52.), (6., 52.), (6., 50.)]
+        );
+    }
+
+    #[test]
+    fn nested_relations() {
+        let coordinates = vec![(6, 52), (6, 50)];
+        let mut obj_map = BTreeMap::new();
+        let mut node_ids = vec![];
+        add_nodes(coordinates, &mut obj_map, &mut node_ids);
+
+        let child_id = RelationId(42);
+        let refs = create_refs(node_ids.into_iter().map(NodeId::into).collect());
+        let child_rel = create_relation(child_id, refs);
+        obj_map.insert(child_id.into(), child_rel.into());
+
+        let node_id = NodeId(43);
+        let node = create_node(node_id, 8, 52);
+        obj_map.insert(node_id.into(), node.into());
+
+        let parent_id = RelationId(44);
+        let refs = create_refs(vec![child_id.into(), node_id.into()]);
+        let parent_rel = create_relation(parent_id, refs);
+
+        let coordinates = parent_rel.get_coordinates(&obj_map);
+
+        assert_eq!(
+            coordinates,
+            vec![(6., 50.), (8., 52.), (6., 52.), (6., 50.)]
         );
     }
 }
