@@ -25,6 +25,7 @@ docker run \
   -v $PWD/Cargo.toml:/build/Cargo.toml \
   -v $PWD/Cargo.lock:/build/Cargo.lock \
   -v $PWD/src:/build/src \
+  -v $PWD/benches:/build/benches \
   -v $PWD/docker-target:/build/target \
   -w /build \
   rust:1.43 cargo build --release
