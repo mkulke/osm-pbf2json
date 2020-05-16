@@ -1,6 +1,7 @@
 # osm-pbf2json
 
 [![Build Status](https://travis-ci.org/mkulke/osm-pbf2json.svg?branch=master)](https://travis-ci.org/mkulke/osm-pbf2json)
+[![codecov](https://codecov.io/gh/mkulke/osm-pbf2json/branch/master/graph/badge.svg)](https://codecov.io/gh/mkulke/osm-pbf2json)
 
 A parser/filter for OSM protobuf bundles
 
