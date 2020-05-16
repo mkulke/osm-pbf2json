@@ -1,5 +1,4 @@
 language: rust
-sude: required
 dist: xenial
 addons:
   apt:
