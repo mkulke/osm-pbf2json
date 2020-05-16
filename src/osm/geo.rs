@@ -1,6 +1,6 @@
 use geo::prelude::*;
 use geo::COORD_PRECISION;
-use geo_types::{Geometry, LineString, Point, Polygon};
+use geo_types::{Geometry, LineString, MultiPoint, Point, Polygon};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -91,10 +91,19 @@ pub fn get_geo_info(coordinates: Vec<(f64, f64)>) -> (Option<Location>, Option<B
     if let Some(geo) = get_geometry(coordinates) {
         let centroid = get_centroid(&geo);
         let bounds = get_bounds(&geo);
-        (centroid, bounds)
-    } else {
-        (None, None)
+        return (centroid, bounds);
     }
+    (None, None)
+}
+
+pub fn get_compound_coordinates(coordinates: Vec<(f64, f64)>) -> Vec<(f64, f64)> {
+    let multi_points: MultiPoint<_> = coordinates.into();
+    let convex_hull = multi_points.convex_hull();
+    convex_hull
+        .exterior()
+        .points_iter()
+        .map(|p| (p.lng(), p.lat()))
+        .collect()
 }
 
 #[cfg(test)]
