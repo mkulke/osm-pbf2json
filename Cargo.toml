@@ -23,7 +23,7 @@ harness = false
 
 [lib]
 name = "osm_pbf2json"
-path = "src/osm/mod.rs"
+path = "src/lib/mod.rs"
 
 [[bin]]
 name = "osm_pbf2json"

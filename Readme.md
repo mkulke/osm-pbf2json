@@ -27,6 +27,7 @@ docker run \
   -v $PWD/Cargo.lock:/build/Cargo.lock \
   -v $PWD/src:/build/src \
   -v $PWD/benches:/build/benches \
+  -v $PWD/tests:/build/tests \
   -v $PWD/docker-target:/build/target \
   -w /build \
   rust:1.43 cargo build --release
@@ -38,7 +39,7 @@ You have to specify a query via `--tags` or `-t`, the syntax is rather simple:
 
 By stating a key (`-t amenity`) it will select all entities which are tagged using that key. To further narrow down the results, a specific value can be given using a `~` field separator (`-t 'amenity~fountain'`). To check the presence of multiple tags for the same entity, statements can be combined using the `+` operator (`-t 'amenity~fountain+tourism'`). Finally, options can be specified by concatenating groups of statements with `,` (`-t 'amenity~fountain+tourism,amenity~townhall'`). If an entity matches the criteria of either group it will be included in the output.
 
-A clipped PBF sample is contained in the `./benches` folder.
+A clipped PBF sample is contained in the `./tests/data` folder.
 
 ```
 ./target/release/osm_pbf2json -t="addr:housenumber+addr:street+addr:postcode~10178" berlin.pbf | tail -3

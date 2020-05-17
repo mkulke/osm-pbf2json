@@ -20,9 +20,9 @@ pub fn process_bench(c: &mut Criterion) {
     let groups = filter::parse("amenity".to_string());
     group.bench_function("process", |b| {
         b.iter(|| {
-            let file = File::open("./benches/alexanderplatz.pbf").unwrap();
-            let writer = MockWriter;
-            process(file, writer, &groups).unwrap();
+            let file = File::open("./tests/data/alexanderplatz.pbf").unwrap();
+            let mut writer = MockWriter;
+            process(file, &mut writer, &groups).unwrap();
         })
     });
     group.finish();

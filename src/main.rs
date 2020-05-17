@@ -1,9 +1,10 @@
+use lib::{filter, process};
 use std::error::Error;
 use std::fs::File;
 use std::io;
 use structopt::StructOpt;
 
-mod osm;
+mod lib;
 
 #[derive(StructOpt)]
 struct Cli {
@@ -16,9 +17,9 @@ struct Cli {
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Cli::from_args();
     let file = File::open(args.path)?;
-    let groups = osm::filter::parse(args.tags);
+    let groups = filter::parse(args.tags);
     let stdout = io::stdout();
-    let handle = io::BufWriter::new(stdout);
-    osm::process(file, handle, &groups)?;
+    let mut handle = io::BufWriter::new(stdout);
+    process(file, &mut handle, &groups)?;
     Ok(())
 }

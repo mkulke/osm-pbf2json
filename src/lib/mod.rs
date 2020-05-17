@@ -126,7 +126,7 @@ impl SerializeNode for Node {
 
 pub fn process(
     file: impl Seek + Read,
-    mut writer: impl Write,
+    writer: &mut dyn Write,
     groups: &[Group],
 ) -> Result<(), Box<dyn Error>> {
     let mut pbf = OsmPbfReader::new(file);
