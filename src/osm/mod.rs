@@ -1,6 +1,6 @@
 use self::geo::{get_compound_coordinates, get_geo_info, Bounds, Location};
 use filter::{filter, Group};
-use osmpbfreader::objects::{OsmId, OsmObj, Relation, Tags, Way};
+use osmpbfreader::objects::{Node, OsmId, OsmObj, Relation, Tags, Way};
 use osmpbfreader::OsmPbfReader;
 use serde::{Deserialize, Serialize};
 use serde_json::to_string;
@@ -41,7 +41,14 @@ struct JSONRelation {
     bounds: Option<Bounds>,
 }
 
-impl OsmExt for Way {
+type SerdeResult = Result<String, serde_json::error::Error>;
+
+trait SerializeParent {
+    fn get_coordinates(&self, objs: &BTreeMap<OsmId, OsmObj>) -> Vec<(f64, f64)>;
+    fn to_json_string(&self, objs: &BTreeMap<OsmId, OsmObj>) -> SerdeResult;
+}
+
+impl SerializeParent for Way {
     fn get_coordinates(&self, objs: &BTreeMap<OsmId, OsmObj>) -> Vec<(f64, f64)> {
         self.nodes
             .iter()
@@ -52,9 +59,22 @@ impl OsmExt for Way {
             })
             .collect()
     }
+
+    fn to_json_string(&self, objs: &BTreeMap<OsmId, OsmObj>) -> SerdeResult {
+        let coordinates = self.get_coordinates(&objs);
+        let (centroid, bounds) = get_geo_info(coordinates);
+        let jw = JSONWay {
+            osm_type: "way",
+            id: self.id.0,
+            tags: self.tags.to_owned(),
+            centroid,
+            bounds,
+        };
+        to_string(&jw)
+    }
 }
 
-impl OsmExt for Relation {
+impl SerializeParent for Relation {
     fn get_coordinates(&self, objs: &BTreeMap<OsmId, OsmObj>) -> Vec<(f64, f64)> {
         let coordinates = self
             .refs
@@ -72,10 +92,36 @@ impl OsmExt for Relation {
             .collect();
         get_compound_coordinates(coordinates)
     }
+
+    fn to_json_string(&self, objs: &BTreeMap<OsmId, OsmObj>) -> SerdeResult {
+        let coordinates = self.get_coordinates(&objs);
+        let (centroid, bounds) = get_geo_info(coordinates);
+        let jr = JSONRelation {
+            osm_type: "relation",
+            id: self.id.0,
+            tags: self.tags.to_owned(),
+            centroid,
+            bounds,
+        };
+        to_string(&jr)
+    }
 }
 
-trait OsmExt {
-    fn get_coordinates(&self, objs: &BTreeMap<OsmId, OsmObj>) -> Vec<(f64, f64)>;
+trait SerializeNode {
+    fn to_json_string(&self) -> SerdeResult;
+}
+
+impl SerializeNode for Node {
+    fn to_json_string(&self) -> SerdeResult {
+        let jn = JSONNode {
+            osm_type: "node",
+            id: self.id.0,
+            lat: self.lat(),
+            lon: self.lon(),
+            tags: self.tags.to_owned(),
+        };
+        to_string(&jn)
+    }
 }
 
 pub fn process(
@@ -91,45 +137,12 @@ pub fn process(
             continue;
         }
 
-        match obj {
-            OsmObj::Node(node) => {
-                let jn = JSONNode {
-                    osm_type: "node",
-                    id: node.id.0,
-                    lat: node.lat(),
-                    lon: node.lon(),
-                    tags: node.tags.clone(),
-                };
-                let jn_str = to_string(&jn)?;
-                writeln!(writer, "{}", jn_str)?;
-            }
-            OsmObj::Way(way) => {
-                let coordinates = way.get_coordinates(&objs);
-                let (centroid, bounds) = get_geo_info(coordinates);
-                let jw = JSONWay {
-                    osm_type: "way",
-                    id: way.id.0,
-                    tags: way.tags.clone(),
-                    centroid,
-                    bounds,
-                };
-                let jw_str = to_string(&jw)?;
-                writeln!(writer, "{}", jw_str)?;
-            }
-            OsmObj::Relation(relation) => {
-                let coordinates = relation.get_coordinates(&objs);
-                let (centroid, bounds) = get_geo_info(coordinates);
-                let jr = JSONRelation {
-                    osm_type: "relation",
-                    id: relation.id.0,
-                    tags: relation.tags.clone(),
-                    centroid,
-                    bounds,
-                };
-                let jr_str = to_string(&jr)?;
-                writeln!(writer, "{}", jr_str)?;
-            }
-        }
+        let json_str = match obj {
+            OsmObj::Node(node) => node.to_json_string(),
+            OsmObj::Way(way) => way.to_json_string(&objs),
+            OsmObj::Relation(relation) => relation.to_json_string(&objs),
+        }?;
+        writeln!(writer, "{}", json_str)?;
     }
     Ok(())
 }
