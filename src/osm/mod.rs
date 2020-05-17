@@ -137,7 +137,7 @@ pub fn process(
 #[cfg(test)]
 mod get_coordinates {
     use super::*;
-    use osmpbfreader::objects::{Node, NodeId, Ref, Relation, RelationId, Tags};
+    use osmpbfreader::objects::{Node, NodeId, Ref, Relation, RelationId, Tags, Way, WayId};
     use std::collections::BTreeMap;
 
     fn create_node(id: NodeId, lng: i32, lat: i32) -> Node {
@@ -155,6 +155,11 @@ mod get_coordinates {
     fn create_relation(id: RelationId, refs: Vec<Ref>) -> Relation {
         let tags = Tags::new();
         Relation { id, tags, refs }
+    }
+
+    fn create_way(id: WayId, nodes: Vec<NodeId>) -> Way {
+        let tags = Tags::new();
+        Way { id, tags, nodes }
     }
 
     fn add_nodes(
@@ -186,6 +191,36 @@ mod get_coordinates {
         let rel = create_relation(id, vec![]);
         let coordinates = rel.get_coordinates(&obj_map);
         assert_eq!(coordinates.len(), 0);
+    }
+
+    #[test]
+    fn relation_with_one_way() {
+        let coordinates = vec![(9, 50), (9, 51), (10, 51)];
+
+        // 1     2
+        //
+        //
+        // 0
+
+        let mut obj_map = BTreeMap::new();
+        let mut node_ids = vec![];
+        add_nodes(coordinates, &mut obj_map, &mut node_ids);
+
+        let way_id = WayId(42);
+        let way = create_way(way_id, node_ids);
+        obj_map.insert(way_id.into(), way.into());
+
+        let refs = create_refs(vec![way_id.into()]);
+        let id = RelationId(43);
+        let rel = create_relation(id, refs);
+
+        // we expect a closed triangle
+
+        let coordinates = rel.get_coordinates(&obj_map);
+        assert_eq!(
+            coordinates,
+            vec![(9., 50.), (9., 51.), (10., 51.), (9., 50.)]
+        );
     }
 
     #[test]
