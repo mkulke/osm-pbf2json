@@ -1,4 +1,4 @@
-use lib::{filter, process};
+use lib::{extract_streets, filter, process};
 use std::error::Error;
 use std::fs::File;
 use std::io;
@@ -8,7 +8,9 @@ mod lib;
 
 #[derive(StructOpt)]
 struct Cli {
-    #[structopt(short = "t", long = "tags")]
+    #[structopt(short, long)]
+    mgns: bool,
+    #[structopt(short, long)]
     tags: String,
     #[structopt(parse(from_os_str))]
     path: std::path::PathBuf,
@@ -20,6 +22,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     let groups = filter::parse(args.tags);
     let stdout = io::stdout();
     let mut handle = io::BufWriter::new(stdout);
-    process(file, &mut handle, &groups)?;
+    if args.mgns {
+        extract_streets(file, &mut handle)?;
+    } else {
+        process(file, &mut handle, &groups)?;
+    }
     Ok(())
 }

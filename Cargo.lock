@@ -395,6 +395,7 @@ dependencies = [
  "criterion",
  "geo",
  "geo-types",
+ "itertools",
  "osmpbfreader",
  "serde",
  "serde_json",

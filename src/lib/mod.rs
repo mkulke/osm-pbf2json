@@ -1,15 +1,28 @@
 use self::geo::{get_compound_coordinates, get_geo_info, Bounds, Location};
-use filter::{filter, Group};
-use osmpbfreader::objects::{Node, OsmId, OsmObj, Relation, Tags, Way};
+use filter::{filter, parse, Group};
+use itertools::Itertools;
+use osmpbfreader::objects::{Node, NodeId, OsmId, OsmObj, Relation, Tags, Way};
 use osmpbfreader::OsmPbfReader;
 use serde::{Deserialize, Serialize};
 use serde_json::to_string;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
 use std::io::{Read, Seek, Write};
 
 pub mod filter;
 mod geo;
+
+#[derive(Serialize, Deserialize)]
+struct JSONStreetSegment {
+    postal_code: String,
+    coordinates: Vec<(f64, f64)>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct JSONStreet {
+    name: String,
+    segments: Vec<JSONStreetSegment>,
+}
 
 #[derive(Serialize, Deserialize)]
 struct JSONNode {
@@ -124,6 +137,135 @@ impl SerializeNode for Node {
     }
 }
 
+struct Road<'a> {
+    name: &'a String,
+    head_id: NodeId,
+    tail_id: NodeId,
+    ways: Vec<&'a Way>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type")]
+enum Geometry {
+    LineString { coordinates: Vec<(f64, f64)> },
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type")]
+enum Entity {
+    Feature {
+        properties: HashMap<String, String>,
+        geometry: Geometry,
+    },
+}
+
+impl<'a> Road<'a> {
+    fn is_tail(&self, id: NodeId, name: &str) -> bool {
+        id == self.tail_id && name == self.name
+    }
+
+    fn is_head(&self, id: NodeId, name: &str) -> bool {
+        id == self.head_id && name == self.name
+    }
+
+    fn to_geojson(
+        &self,
+        objs: &BTreeMap<OsmId, OsmObj>,
+    ) -> Result<String, serde_json::error::Error> {
+        let coordinates: Vec<(f64, f64)> = self
+            .ways
+            .iter()
+            .flat_map(|way| &way.nodes)
+            .dedup()
+            .filter_map(|&node_id| {
+                let obj = objs.get(&node_id.into())?;
+                let node = obj.node()?;
+                Some(node)
+            })
+            .map(|node| (node.lon(), node.lat()))
+            .collect();
+        let geometry = Geometry::LineString { coordinates };
+        let entity = Entity::Feature {
+            geometry,
+            properties: vec![("name".to_string(), self.name.clone())]
+                .into_iter()
+                .collect(),
+        };
+
+        to_string(&entity)
+    }
+}
+
+fn get_named_way(obj: &OsmObj) -> Option<(&Way, &String)> {
+    let way = obj.way()?;
+    let name = way.tags.get("name")?;
+    Some((way, name))
+}
+
+fn get_roads<'a>(objs: &'a BTreeMap<OsmId, OsmObj>) -> Vec<Road<'a>> {
+    let mut roads: Vec<Road> = vec![];
+    for obj in objs.values() {
+        // if let Some(way) = obj.way() {
+        if let Some((way, name)) = get_named_way(obj) {
+            let len = way.nodes.len();
+            if len < 1 {
+                continue;
+            }
+            let head_id = way.nodes[0];
+            let tail_id = way.nodes[len - 1];
+
+            // does the head node fit to the tail of a segment?
+            if let Some(road) = roads.iter_mut().find(|road| road.is_tail(head_id, &name)) {
+                road.ways.push(way);
+                road.tail_id = tail_id;
+                continue;
+            }
+
+            // does the tail node fit to the head of a segment?
+            if let Some(road) = roads.iter_mut().find(|road| road.is_head(tail_id, &name)) {
+                road.ways.insert(0, way);
+                road.head_id = head_id;
+                continue;
+            }
+
+            // otherwise add new road
+            let ways = vec![way];
+            let road = Road {
+                name,
+                head_id,
+                tail_id,
+                ways,
+            };
+
+            roads.push(road);
+        }
+    }
+
+    roads
+}
+
+pub fn extract_streets(
+    file: impl Seek + Read,
+    _writer: &mut dyn Write,
+) -> Result<(), Box<dyn Error>> {
+    let mut pbf = OsmPbfReader::new(file);
+    let groups = parse("highway~primary+name+postal_code".to_string());
+    let objs = pbf.get_objs_and_deps(|obj| filter(obj, &groups))?;
+
+    let ways: Vec<&Way> = objs.values().filter_map(|obj| obj.way()).collect();
+    println!("{} ways found", ways.len());
+
+    let roads = get_roads(&objs);
+    for road in roads {
+        if road.name == "Alexanderstraße" {
+            // println!("road {} found with {} ways", road.name, road.ways.len());
+            println!("{}", road.to_geojson(&objs)?);
+        }
+    }
+
+    Ok(())
+}
+
 pub fn process(
     file: impl Seek + Read,
     writer: &mut dyn Write,
@@ -145,6 +287,75 @@ pub fn process(
         writeln!(writer, "{}", json_str)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod get_roads {
+    use super::*;
+    use osmpbfreader::objects::{NodeId, Tags, Way, WayId};
+    use std::collections::BTreeMap;
+
+    fn create_named_way(id: i64, name: &str, nodes: Vec<NodeId>) -> Way {
+        let mut tags = Tags::new();
+        tags.insert("name".to_string(), name.to_string());
+        Way {
+            id: WayId(id),
+            tags,
+            nodes,
+        }
+    }
+
+    #[test]
+    fn one_road_with_two_segments() {
+        let nodes = vec![NodeId(1), NodeId(2)];
+        let way_1 = create_named_way(42, "street a", nodes);
+
+        let nodes = vec![NodeId(2), NodeId(3)];
+        let way_2 = create_named_way(41, "street a", nodes);
+
+        let mut objs: BTreeMap<OsmId, OsmObj> = BTreeMap::new();
+        objs.insert(WayId(41).into(), way_2.into());
+        objs.insert(WayId(42).into(), way_1.into());
+
+        let roads = get_roads(&objs);
+        assert_eq!(roads.len(), 1);
+
+        let road = &roads[0];
+        let numbers: Vec<i64> = road.ways.iter().map(|way| way.id.0).collect();
+        assert_eq!(numbers, vec![42, 41]);
+    }
+
+    #[test]
+    fn connected_ways_with_distinct_names() {
+        let nodes = vec![NodeId(1), NodeId(2)];
+        let way_1 = create_named_way(42, "street a", nodes);
+
+        let nodes = vec![NodeId(2), NodeId(3)];
+        let way_2 = create_named_way(41, "street b", nodes);
+
+        let mut objs: BTreeMap<OsmId, OsmObj> = BTreeMap::new();
+        objs.insert(WayId(41).into(), way_2.into());
+        objs.insert(WayId(42).into(), way_1.into());
+
+        let roads = get_roads(&objs);
+        assert_eq!(roads.len(), 2);
+    }
+
+    #[test]
+    fn two_road_with_one_segment_each() {
+        let nodes = vec![NodeId(1), NodeId(2)];
+        let way_1 = create_named_way(42, "street a", nodes);
+
+        let nodes = vec![NodeId(3), NodeId(4)];
+        let way_2 = create_named_way(41, "street a", nodes);
+
+        let mut objs: BTreeMap<OsmId, OsmObj> = BTreeMap::new();
+        objs.insert(WayId(41).into(), way_2.into());
+        objs.insert(WayId(42).into(), way_1.into());
+
+        let roads = get_roads(&objs);
+        assert_eq!(roads.len(), 2);
+    }
 }
 
 #[cfg(test)]
