@@ -176,11 +176,13 @@ impl Road {
     }
 
     fn append(&mut self, other: Self) {
-        self.coordinates.extend(other.coordinates);
+        let slice: Vec<(f64, f64)> = other.coordinates[1..].into();
+        self.coordinates.extend(slice);
     }
 
     fn prepend(&mut self, other: Self) {
-        self.coordinates = [other.coordinates, self.coordinates.to_owned()].concat();
+        let slice: Vec<(f64, f64)> = self.coordinates[1..].into();
+        self.coordinates = [other.coordinates, slice].concat();
     }
 
     fn to_geojson(&self) -> Result<String, serde_json::error::Error> {
@@ -338,14 +340,7 @@ mod get_roads {
         let road = &roads[0];
         assert_eq!(
             road.coordinates,
-            vec![
-                (13.0, 52.0),
-                (14.0, 52.0),
-                (14.0, 52.0),
-                (14.0, 53.0),
-                (14.0, 53.0),
-                (15.0, 53.0)
-            ]
+            vec![(13.0, 52.0), (14.0, 52.0), (14.0, 53.0), (15.0, 53.0)]
         );
     }
 
