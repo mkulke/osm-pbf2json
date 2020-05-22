@@ -1,7 +1,6 @@
 use self::geo::{get_compound_coordinates, get_geo_info, Bounds, Location};
 use filter::{filter, parse, Group};
-use itertools::Itertools;
-use osmpbfreader::objects::{Node, NodeId, OsmId, OsmObj, Relation, Tags, Way};
+use osmpbfreader::objects::{Node, OsmId, OsmObj, Relation, Tags, Way};
 use osmpbfreader::OsmPbfReader;
 use serde::{Deserialize, Serialize};
 use serde_json::to_string;
@@ -137,11 +136,9 @@ impl SerializeNode for Node {
     }
 }
 
-struct Road<'a> {
-    name: &'a String,
-    head_id: NodeId,
-    tail_id: NodeId,
-    ways: Vec<&'a Way>,
+struct Road {
+    name: String,
+    coordinates: Vec<(f64, f64)>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -159,31 +156,35 @@ enum Entity {
     },
 }
 
-impl<'a> Road<'a> {
-    fn is_tail(&self, id: NodeId, name: &str) -> bool {
-        id == self.tail_id && name == self.name
+impl Road {
+    fn is_tail_of(&self, other: &Self) -> bool {
+        let option = (|| {
+            let first = self.coordinates.first()?;
+            let other_last = other.coordinates.last()?;
+            Some(self.name == other.name && first == other_last)
+        })();
+        option.unwrap_or(false)
     }
 
-    fn is_head(&self, id: NodeId, name: &str) -> bool {
-        id == self.head_id && name == self.name
+    fn is_head_of(&self, other: &Self) -> bool {
+        let option = (|| {
+            let last = self.coordinates.last()?;
+            let other_first = other.coordinates.first()?;
+            Some(self.name == other.name && last == other_first)
+        })();
+        option.unwrap_or(false)
     }
 
-    fn to_geojson(
-        &self,
-        objs: &BTreeMap<OsmId, OsmObj>,
-    ) -> Result<String, serde_json::error::Error> {
-        let coordinates: Vec<(f64, f64)> = self
-            .ways
-            .iter()
-            .flat_map(|way| &way.nodes)
-            .dedup()
-            .filter_map(|&node_id| {
-                let obj = objs.get(&node_id.into())?;
-                let node = obj.node()?;
-                Some(node)
-            })
-            .map(|node| (node.lon(), node.lat()))
-            .collect();
+    fn append(&mut self, other: Self) {
+        self.coordinates.extend(other.coordinates);
+    }
+
+    fn prepend(&mut self, other: Self) {
+        self.coordinates = [other.coordinates, self.coordinates.to_owned()].concat();
+    }
+
+    fn to_geojson(&self) -> Result<String, serde_json::error::Error> {
+        let coordinates = self.coordinates.clone();
         let geometry = Geometry::LineString { coordinates };
         let entity = Entity::Feature {
             geometry,
@@ -196,48 +197,47 @@ impl<'a> Road<'a> {
     }
 }
 
-fn get_named_way(obj: &OsmObj) -> Option<(&Way, &String)> {
+fn get_named_way(obj: &OsmObj) -> Option<(&Way, String)> {
     let way = obj.way()?;
     let name = way.tags.get("name")?;
-    Some((way, name))
+    Some((way, name.to_owned()))
 }
 
-fn get_roads<'a>(objs: &'a BTreeMap<OsmId, OsmObj>) -> Vec<Road<'a>> {
+fn get_road_segment(obj: &OsmObj, objs: &BTreeMap<OsmId, OsmObj>) -> Option<Road> {
+    let (way, name) = get_named_way(obj)?;
+    let coordinates: Vec<(f64, f64)> = way
+        .nodes
+        .iter()
+        .filter_map(|&node_id| {
+            let obj = objs.get(&node_id.into())?;
+            let node = obj.node()?;
+            let coordinate = (node.lon(), node.lat());
+            Some(coordinate)
+        })
+        .collect();
+
+    let road = Road { name, coordinates };
+    Some(road)
+}
+
+fn get_roads(objs: &BTreeMap<OsmId, OsmObj>) -> Vec<Road> {
     let mut roads: Vec<Road> = vec![];
     for obj in objs.values() {
-        // if let Some(way) = obj.way() {
-        if let Some((way, name)) = get_named_way(obj) {
-            let len = way.nodes.len();
-            if len < 1 {
-                continue;
-            }
-            let head_id = way.nodes[0];
-            let tail_id = way.nodes[len - 1];
-
-            // does the head node fit to the tail of a segment?
-            if let Some(road) = roads.iter_mut().find(|road| road.is_tail(head_id, &name)) {
-                road.ways.push(way);
-                road.tail_id = tail_id;
+        if let Some(road_segment) = get_road_segment(obj, objs) {
+            // does the segment fit to the end of sth?
+            if let Some(road) = roads.iter_mut().find(|road| road_segment.is_tail_of(road)) {
+                road.append(road_segment);
                 continue;
             }
 
-            // does the tail node fit to the head of a segment?
-            if let Some(road) = roads.iter_mut().find(|road| road.is_head(tail_id, &name)) {
-                road.ways.insert(0, way);
-                road.head_id = head_id;
+            // does the segment fit to the beginning of sth?
+            if let Some(road) = roads.iter_mut().find(|road| road_segment.is_head_of(road)) {
+                road.prepend(road_segment);
                 continue;
             }
 
-            // otherwise add new road
-            let ways = vec![way];
-            let road = Road {
-                name,
-                head_id,
-                tail_id,
-                ways,
-            };
-
-            roads.push(road);
+            // otherwise push it as new road
+            roads.push(road_segment);
         }
     }
 
@@ -259,7 +259,7 @@ pub fn extract_streets(
     for road in roads {
         if road.name == "Alexanderstraße" {
             // println!("road {} found with {} ways", road.name, road.ways.len());
-            println!("{}", road.to_geojson(&objs)?);
+            println!("{}", road.to_geojson()?);
         }
     }
 
@@ -295,47 +295,72 @@ mod get_roads {
     use osmpbfreader::objects::{NodeId, Tags, Way, WayId};
     use std::collections::BTreeMap;
 
-    fn create_named_way(id: i64, name: &str, nodes: Vec<NodeId>) -> Way {
+    fn add_way(id: WayId, name: &str, nodes: Vec<NodeId>, objs: &mut BTreeMap<OsmId, OsmObj>) {
         let mut tags = Tags::new();
         tags.insert("name".to_string(), name.to_string());
-        Way {
-            id: WayId(id),
+        let way = Way { id, tags, nodes };
+        objs.insert(id.into(), way.into());
+    }
+
+    fn add_node(id: NodeId, lng: f64, lat: f64, objs: &mut BTreeMap<OsmId, OsmObj>) {
+        let tags = Tags::new();
+        let decimicro_lat = lat as i32 * 10_000_000;
+        let decimicro_lon = lng as i32 * 10_000_000;
+        let node = Node {
+            id,
             tags,
-            nodes,
-        }
+            decimicro_lat,
+            decimicro_lon,
+        };
+        objs.insert(id.into(), node.into());
     }
 
     #[test]
-    fn one_road_with_two_segments() {
-        let nodes = vec![NodeId(1), NodeId(2)];
-        let way_1 = create_named_way(42, "street a", nodes);
-
-        let nodes = vec![NodeId(2), NodeId(3)];
-        let way_2 = create_named_way(41, "street a", nodes);
-
+    fn one_road_with_three_segments() {
         let mut objs: BTreeMap<OsmId, OsmObj> = BTreeMap::new();
-        objs.insert(WayId(41).into(), way_2.into());
-        objs.insert(WayId(42).into(), way_1.into());
+        add_node(NodeId(1), 13., 52., &mut objs);
+        add_node(NodeId(2), 14., 52., &mut objs);
+        add_node(NodeId(3), 14., 53., &mut objs);
+        add_node(NodeId(4), 15., 53., &mut objs);
+
+        let node_ids = vec![NodeId(1), NodeId(2)];
+        add_way(WayId(42), "street a", node_ids, &mut objs);
+
+        let node_ids = vec![NodeId(2), NodeId(3)];
+        add_way(WayId(41), "street a", node_ids, &mut objs);
+
+        let node_ids = vec![NodeId(3), NodeId(4)];
+        add_way(WayId(43), "street a", node_ids, &mut objs);
 
         let roads = get_roads(&objs);
         assert_eq!(roads.len(), 1);
 
         let road = &roads[0];
-        let numbers: Vec<i64> = road.ways.iter().map(|way| way.id.0).collect();
-        assert_eq!(numbers, vec![42, 41]);
+        assert_eq!(
+            road.coordinates,
+            vec![
+                (13.0, 52.0),
+                (14.0, 52.0),
+                (14.0, 52.0),
+                (14.0, 53.0),
+                (14.0, 53.0),
+                (15.0, 53.0)
+            ]
+        );
     }
 
     #[test]
     fn connected_ways_with_distinct_names() {
-        let nodes = vec![NodeId(1), NodeId(2)];
-        let way_1 = create_named_way(42, "street a", nodes);
-
-        let nodes = vec![NodeId(2), NodeId(3)];
-        let way_2 = create_named_way(41, "street b", nodes);
-
         let mut objs: BTreeMap<OsmId, OsmObj> = BTreeMap::new();
-        objs.insert(WayId(41).into(), way_2.into());
-        objs.insert(WayId(42).into(), way_1.into());
+        add_node(NodeId(1), 13., 52., &mut objs);
+        add_node(NodeId(2), 14., 52., &mut objs);
+        add_node(NodeId(3), 14., 53., &mut objs);
+
+        let node_ids = vec![NodeId(1), NodeId(2)];
+        add_way(WayId(42), "street a", node_ids, &mut objs);
+
+        let node_ids = vec![NodeId(2), NodeId(3)];
+        add_way(WayId(41), "street b", node_ids, &mut objs);
 
         let roads = get_roads(&objs);
         assert_eq!(roads.len(), 2);
@@ -343,15 +368,17 @@ mod get_roads {
 
     #[test]
     fn two_road_with_one_segment_each() {
-        let nodes = vec![NodeId(1), NodeId(2)];
-        let way_1 = create_named_way(42, "street a", nodes);
-
-        let nodes = vec![NodeId(3), NodeId(4)];
-        let way_2 = create_named_way(41, "street a", nodes);
-
         let mut objs: BTreeMap<OsmId, OsmObj> = BTreeMap::new();
-        objs.insert(WayId(41).into(), way_2.into());
-        objs.insert(WayId(42).into(), way_1.into());
+        add_node(NodeId(1), 13., 52., &mut objs);
+        add_node(NodeId(2), 14., 52., &mut objs);
+        add_node(NodeId(3), 14., 53., &mut objs);
+        add_node(NodeId(4), 15., 53., &mut objs);
+
+        let node_ids = vec![NodeId(1), NodeId(2)];
+        add_way(WayId(42), "street a", node_ids, &mut objs);
+
+        let node_ids = vec![NodeId(2), NodeId(3)];
+        add_way(WayId(41), "street b", node_ids, &mut objs);
 
         let roads = get_roads(&objs);
         assert_eq!(roads.len(), 2);
