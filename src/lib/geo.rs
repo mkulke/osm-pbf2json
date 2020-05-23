@@ -18,6 +18,24 @@ impl PartialEq<Location> for Location {
     }
 }
 
+impl From<&(f64, f64)> for Location {
+    fn from(coordinates: &(f64, f64)) -> Self {
+        Location {
+            lon: coordinates.0,
+            lat: coordinates.1,
+        }
+    }
+}
+
+impl Location {
+    pub fn is_close_to(&self, other: &Self) -> bool {
+        let self_point = Point::new(self.lon, self.lat);
+        let other_point = Point::new(other.lon, other.lat);
+        let distance = self_point.euclidean_distance(&other_point);
+        distance < 5.0e-8
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Bounds {
     e: f64,

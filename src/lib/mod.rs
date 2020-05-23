@@ -156,12 +156,74 @@ enum Entity {
     },
 }
 
+#[derive(PartialEq, Debug)]
+enum Connection {
+    Tail,
+    Head,
+    ReverseTail,
+    ReverseHead,
+}
+
+trait Coordinates {
+    fn is_close_to(&self, coordinate: &(f64, f64)) -> bool;
+}
+
+impl Coordinates for (f64, f64) {
+    fn is_close_to(&self, coordinate: &(f64, f64)) -> bool {
+        let loc_1: Location = coordinate.into();
+        let loc_2: Location = self.into();
+        loc_1.is_close_to(&loc_2)
+    }
+}
+
 impl Road {
+    #[allow(dead_code)]
+    fn is_connected_to(&self, other: &Self) -> Option<Connection> {
+        let first = self.coordinates.first()?;
+        let last = self.coordinates.last()?;
+        let other_first = other.coordinates.first()?;
+        let other_last = other.coordinates.last()?;
+
+        if last == other_first {
+            Some(Connection::Tail)
+        } else if last == other_last {
+            Some(Connection::ReverseTail)
+        } else if first == other_last {
+            Some(Connection::Head)
+        } else if first == other_first {
+            Some(Connection::ReverseHead)
+        } else {
+            None
+        }
+    }
+
+    #[allow(dead_code)]
+    fn merge(&mut self, mut other: Self, connection: &Connection) {
+        match connection {
+            Connection::Tail => {
+                self.coordinates.extend(other.coordinates);
+            }
+            Connection::ReverseTail => {
+                other.coordinates.reverse();
+                self.coordinates.extend(other.coordinates);
+            }
+            Connection::Head => {
+                other.coordinates.extend(&self.coordinates[..]);
+                self.coordinates = other.coordinates;
+            }
+            Connection::ReverseHead => {
+                other.coordinates.reverse();
+                other.coordinates.extend(&self.coordinates[..]);
+                self.coordinates = other.coordinates;
+            }
+        }
+    }
+
     fn is_tail_of(&self, other: &Self) -> bool {
         let option = (|| {
             let first = self.coordinates.first()?;
             let other_last = other.coordinates.last()?;
-            Some(self.name == other.name && first == other_last)
+            Some(self.name == other.name && first.is_close_to(other_last))
         })();
         option.unwrap_or(false)
     }
@@ -170,7 +232,7 @@ impl Road {
         let option = (|| {
             let last = self.coordinates.last()?;
             let other_first = other.coordinates.first()?;
-            Some(self.name == other.name && last == other_first)
+            Some(self.name == other.name && last.is_close_to(other_first))
         })();
         option.unwrap_or(false)
     }
@@ -289,6 +351,91 @@ pub fn process(
         writeln!(writer, "{}", json_str)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod roads {
+    use super::*;
+
+    macro_rules! road {
+        ($($x: expr), *) => {
+            Road {
+                name: "abc street".to_string(),
+                coordinates: vec![$($x), *],
+            }
+        };
+    }
+
+    #[test]
+    fn is_connected_to() {
+        use Connection::*;
+
+        let road_1 = road![(1., 1.), (2., 2.)];
+        let road_2 = road![(2., 2.), (3., 3.)];
+
+        assert_eq!(road_1.is_connected_to(&road_2), Some(Tail));
+        assert_eq!(road_2.is_connected_to(&road_1), Some(Head));
+
+        let road_3 = road![(3., 3.), (2., 2.)];
+        assert_eq!(road_1.is_connected_to(&road_3), Some(ReverseTail));
+
+        let road_4 = road![(2., 2.), (1., 1.)];
+        assert_eq!(road_2.is_connected_to(&road_4), Some(ReverseHead));
+
+        let road_5 = road![(3., 3.), (4., 4.)];
+        assert_eq!(road_1.is_connected_to(&road_5), None);
+    }
+
+    #[test]
+    fn merge_tail() {
+        let mut road_1 = road![(1., 1.), (2., 2.)];
+        let road_2 = road![(2., 2.), (3., 3.)];
+
+        road_1.merge(road_2, &Connection::Tail);
+        assert_eq!(
+            road_1.coordinates,
+            vec![(1., 1.), (2., 2.), (2., 2.), (3., 3.)]
+        );
+    }
+
+    #[test]
+    fn merge_head() {
+        let mut road_1 = road![(2., 2.), (3., 3.)];
+        let road_2 = road![(1., 1.), (2., 2.)];
+
+        road_1.merge(road_2, &Connection::Head);
+
+        assert_eq!(
+            road_1.coordinates,
+            vec![(1., 1.), (2., 2.), (2., 2.), (3., 3.)]
+        );
+    }
+
+    #[test]
+    fn merge_reverse_tail() {
+        let mut road_1 = road![(1., 1.), (2., 2.)];
+        let road_2 = road![(3., 3.), (2., 2.)];
+
+        road_1.merge(road_2, &Connection::ReverseTail);
+
+        assert_eq!(
+            road_1.coordinates,
+            vec![(1., 1.), (2., 2.), (2., 2.), (3., 3.)]
+        );
+    }
+
+    #[test]
+    fn merge_reverse_head() {
+        let mut road_1 = road![(2., 2.), (3., 3.)];
+        let road_2 = road![(2., 2.), (1., 1.)];
+
+        road_1.merge(road_2, &Connection::ReverseHead);
+
+        assert_eq!(
+            road_1.coordinates,
+            vec![(1., 1.), (2., 2.), (2., 2.), (3., 3.)]
+        );
+    }
 }
 
 #[cfg(test)]
