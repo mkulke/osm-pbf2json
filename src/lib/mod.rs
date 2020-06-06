@@ -8,6 +8,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
 use std::io::{Read, Seek, Write};
 
+pub mod chainable;
 pub mod filter;
 mod geo;
 
