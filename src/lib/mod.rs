@@ -233,15 +233,15 @@ fn get_roads(objs: &BTreeMap<OsmId, OsmObj>) -> Vec<Road> {
     let mut roads: Vec<Road> = vec![];
     for (name, group) in name_groups.into_iter() {
         println!("name group: {}", name);
-        let nested_coordinates: Vec<Vec<(f64, f64)>> = group
+        let mut nested_coordinates: Vec<Vec<(f64, f64)>> = group
             .iter()
             .filter_map(|obj| {
                 let road = get_road_segment(obj, objs)?;
                 Some(road.coordinates)
             })
             .collect();
-        let coordinate_chains = nested_coordinates.chain();
-        for chain in coordinate_chains {
+        nested_coordinates.merge();
+        for chain in nested_coordinates {
             let chained_road = Road {
                 name: name.to_owned(),
                 coordinates: chain,
@@ -311,9 +311,9 @@ mod roads {
         };
     }
 
-    macro_rules! chain {
+    macro_rules! coordinates {
         ($($x: expr), *) => {
-            vec![$($x.coordinates), *].chain()
+            vec![$($x.coordinates), *]
         };
     }
 
@@ -322,8 +322,23 @@ mod roads {
         let road_1 = road![(1., 1.), (2., 2.)];
         let road_2 = road![(2., 2.), (3., 3.)];
 
-        let coordinates = chain![road_1, road_2];
+        let mut coordinates = coordinates![road_1, road_2];
+        coordinates.merge();
         assert_eq!(coordinates, vec![vec![(1., 1.), (2., 2.), (3., 3.)]]);
+    }
+
+    #[test]
+    fn merge_disjointed() {
+        let road_1 = road![(3., 3.), (4., 4.)];
+        let road_2 = road![(1., 1.), (2., 2.)];
+        let road_3 = road![(2., 2.), (3., 3.)];
+
+        let mut coordinates = coordinates![road_1, road_2, road_3];
+        coordinates.merge();
+        assert_eq!(
+            coordinates,
+            vec![vec![(1., 1.), (2., 2.), (3., 3.), (4., 4.)]]
+        );
     }
 
     #[test]
@@ -331,7 +346,8 @@ mod roads {
         let road_1 = road![(2., 2.), (3., 3.)];
         let road_2 = road![(1., 1.), (2., 2.)];
 
-        let coordinates = chain![road_1, road_2];
+        let mut coordinates = coordinates![road_1, road_2];
+        coordinates.merge();
         assert_eq!(coordinates, vec![vec![(1., 1.), (2., 2.), (3., 3.)]]);
     }
 
@@ -340,7 +356,8 @@ mod roads {
         let road_1 = road![(1., 1.), (2., 2.)];
         let road_2 = road![(3., 3.), (2., 2.)];
 
-        let coordinates = chain![road_1, road_2];
+        let mut coordinates = coordinates![road_1, road_2];
+        coordinates.merge();
         assert_eq!(coordinates, vec![vec![(1., 1.), (2., 2.), (3., 3.)]]);
     }
 
@@ -349,7 +366,8 @@ mod roads {
         let road_1 = road![(2., 2.), (3., 3.)];
         let road_2 = road![(2., 2.), (1., 1.)];
 
-        let coordinates = chain![road_1, road_2];
+        let mut coordinates = coordinates![road_1, road_2];
+        coordinates.merge();
         assert_eq!(coordinates, vec![vec![(1., 1.), (2., 2.), (3., 3.)]]);
     }
 }

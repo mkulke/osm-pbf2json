@@ -1,5 +1,6 @@
 pub trait Chainable<T> {
     fn chain(&self) -> Vec<Vec<T>>;
+    fn merge(&mut self);
 }
 
 #[derive(PartialEq, Debug)]
@@ -38,6 +39,8 @@ impl<T: Copy> Prependable<T> for Vec<T> {
 
 impl<T: Copy + PartialEq> Chainable<T> for Vec<Vec<T>> {
     fn chain(&self) -> Vec<Vec<T>> {
+        use Connection::*;
+
         let mut chains: Vec<Vec<T>> = vec![];
         for list in self {
             let first_elem = list.first();
@@ -48,19 +51,17 @@ impl<T: Copy + PartialEq> Chainable<T> for Vec<Vec<T>> {
                 let chain_first = chain.first()?;
                 let chain_last = chain.last()?;
                 if *chain_last == *list_first {
-                    Some(Connection::Tail(chain))
+                    Some(Tail(chain))
                 } else if *chain_first == *list_last {
-                    Some(Connection::Head(chain))
+                    Some(Head(chain))
                 } else if *chain_last == *list_last {
-                    Some(Connection::ReverseTail(chain))
+                    Some(ReverseTail(chain))
                 } else if *chain_first == *list_first {
-                    Some(Connection::ReverseHead(chain))
+                    Some(ReverseHead(chain))
                 } else {
                     None
                 }
             }) {
-                use Connection::*;
-
                 match connection {
                     Tail(chain) => chain.extend(&list[1..]),
                     Head(chain) => chain.prepend(&list[..list.len() - 1]),
@@ -73,6 +74,17 @@ impl<T: Copy + PartialEq> Chainable<T> for Vec<Vec<T>> {
         }
         chains
     }
+
+    fn merge(&mut self) {
+        let mut vec_size;
+        loop {
+            vec_size = self.len();
+            *self = self.chain();
+            if self.len() == vec_size {
+                break;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -83,44 +95,54 @@ mod test {
     fn tail() {
         let a = vec![1, 2, 3];
         let b = vec![3, 4, 5];
-        let c = vec![a, b];
-        let d = c.chain();
-        assert_eq!(d, vec![vec![1, 2, 3, 4, 5]]);
+        let mut c = vec![a, b];
+        c.merge();
+        assert_eq!(c, vec![vec![1, 2, 3, 4, 5]]);
     }
 
     #[test]
     fn head() {
         let a = vec![3, 4, 5];
         let b = vec![1, 2, 3];
-        let c = vec![a, b];
-        let d = c.chain();
-        assert_eq!(d, vec![vec![1, 2, 3, 4, 5]]);
+        let mut c = vec![a, b];
+        c.merge();
+        assert_eq!(c, vec![vec![1, 2, 3, 4, 5]]);
     }
 
     #[test]
     fn reverse_tail() {
         let a = vec![1, 2, 3];
         let b = vec![5, 4, 3];
-        let c = vec![a, b];
-        let d = c.chain();
-        assert_eq!(d, vec![vec![1, 2, 3, 4, 5]]);
+        let mut c = vec![a, b];
+        c.merge();
+        assert_eq!(c, vec![vec![1, 2, 3, 4, 5]]);
     }
 
     #[test]
     fn reverse_head() {
         let a = vec![3, 4, 5];
         let b = vec![3, 2, 1];
-        let c = vec![a, b];
-        let d = c.chain();
-        assert_eq!(d, vec![vec![1, 2, 3, 4, 5]]);
+        let mut c = vec![a, b];
+        c.merge();
+        assert_eq!(c, vec![vec![1, 2, 3, 4, 5]]);
+    }
+
+    #[test]
+    fn disjointed() {
+        let a = vec![5, 6, 7];
+        let b = vec![1, 2, 3];
+        let c = vec![3, 4, 5];
+        let mut d = vec![a, b, c];
+        d.merge();
+        assert_eq!(d, vec![vec![1, 2, 3, 4, 5, 6, 7]]);
     }
 
     #[test]
     fn unrelated() {
         let a = vec![1, 2, 3];
         let b = vec![4, 5, 6];
-        let c = vec![a, b];
-        let d = c.chain();
-        assert_eq!(d, vec![vec![1, 2, 3], vec![4, 5, 6]]);
+        let mut c = vec![a, b];
+        c.merge();
+        assert_eq!(c, vec![vec![1, 2, 3], vec![4, 5, 6]]);
     }
 }
