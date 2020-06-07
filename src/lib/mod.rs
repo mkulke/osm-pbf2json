@@ -1,7 +1,10 @@
 use self::geo::{get_compound_coordinates, get_geo_info, Bounds, Location};
+use chainable::Chainable;
 use filter::{filter, parse, Group};
+use itertools::Itertools;
 use osmpbfreader::objects::{Node, OsmId, OsmObj, Relation, Tags, Way};
 use osmpbfreader::OsmPbfReader;
+use rand::random;
 use serde::{Deserialize, Serialize};
 use serde_json::to_string;
 use std::collections::{BTreeMap, HashMap};
@@ -137,6 +140,7 @@ impl SerializeNode for Node {
     }
 }
 
+#[derive(Debug)]
 struct Road {
     name: String,
     coordinates: Vec<(f64, f64)>,
@@ -155,14 +159,9 @@ enum Entity {
         properties: HashMap<String, String>,
         geometry: Geometry,
     },
-}
-
-#[derive(PartialEq, Debug)]
-enum Connection {
-    Tail,
-    Head,
-    ReverseTail,
-    ReverseHead,
+    FeatureCollection {
+        features: Vec<Entity>,
+    },
 }
 
 trait Coordinates {
@@ -177,88 +176,36 @@ impl Coordinates for (f64, f64) {
     }
 }
 
-impl Road {
-    #[allow(dead_code)]
-    fn is_connected_to(&self, other: &Self) -> Option<Connection> {
-        let first = self.coordinates.first()?;
-        let last = self.coordinates.last()?;
-        let other_first = other.coordinates.first()?;
-        let other_last = other.coordinates.last()?;
+trait GeojsonExt {
+    fn to_geojson(&self) -> Result<String, Box<dyn Error>>;
+}
 
-        if last == other_first {
-            Some(Connection::Tail)
-        } else if last == other_last {
-            Some(Connection::ReverseTail)
-        } else if first == other_last {
-            Some(Connection::Head)
-        } else if first == other_first {
-            Some(Connection::ReverseHead)
-        } else {
-            None
-        }
-    }
+impl GeojsonExt for Vec<Road> {
+    fn to_geojson(&self) -> Result<String, Box<dyn Error>> {
+        let features = self
+            .iter()
+            .map(|road| {
+                let coordinates = road.coordinates.clone();
+                let geometry = Geometry::LineString { coordinates };
+                let r = random::<u8>();
+                let g = random::<u8>();
+                let b = random::<u8>();
+                let random_color = format!("#{:02X}{:02X}{:02X}", r, g, b);
+                Entity::Feature {
+                    geometry,
+                    properties: vec![
+                        ("name".to_string(), road.name.clone()),
+                        ("stroke".to_string(), random_color),
+                    ]
+                    .into_iter()
+                    .collect(),
+                }
+            })
+            .collect();
 
-    #[allow(dead_code)]
-    fn merge(&mut self, mut other: Self, connection: &Connection) {
-        match connection {
-            Connection::Tail => {
-                self.coordinates.extend(other.coordinates);
-            }
-            Connection::ReverseTail => {
-                other.coordinates.reverse();
-                self.coordinates.extend(other.coordinates);
-            }
-            Connection::Head => {
-                other.coordinates.extend(&self.coordinates[..]);
-                self.coordinates = other.coordinates;
-            }
-            Connection::ReverseHead => {
-                other.coordinates.reverse();
-                other.coordinates.extend(&self.coordinates[..]);
-                self.coordinates = other.coordinates;
-            }
-        }
-    }
-
-    fn is_tail_of(&self, other: &Self) -> bool {
-        let option = (|| {
-            let first = self.coordinates.first()?;
-            let other_last = other.coordinates.last()?;
-            Some(self.name == other.name && first.is_close_to(other_last))
-        })();
-        option.unwrap_or(false)
-    }
-
-    fn is_head_of(&self, other: &Self) -> bool {
-        let option = (|| {
-            let last = self.coordinates.last()?;
-            let other_first = other.coordinates.first()?;
-            Some(self.name == other.name && last.is_close_to(other_first))
-        })();
-        option.unwrap_or(false)
-    }
-
-    fn append(&mut self, other: Self) {
-        let slice: Vec<(f64, f64)> = other.coordinates[1..].into();
-        self.coordinates.extend(slice);
-    }
-
-    fn prepend(&mut self, other: Self) {
-        let slice: Vec<(f64, f64)> = self.coordinates[1..].into();
-        self.coordinates = [other.coordinates, slice].concat();
-    }
-
-    fn to_geojson(&self) -> Result<String, serde_json::error::Error> {
-        let coordinates = self.coordinates.clone();
-        let geometry = Geometry::LineString { coordinates };
-        let entity = Entity::Feature {
-            geometry,
-            properties: vec![("name".to_string(), self.name.clone())]
-                .into_iter()
-                .collect(),
-        };
-
-        to_string(&entity)
+        let feature_collection = Entity::FeatureCollection { features };
+        let string = to_string(&feature_collection)?;
+        Ok(string)
     }
 }
 
@@ -286,23 +233,32 @@ fn get_road_segment(obj: &OsmObj, objs: &BTreeMap<OsmId, OsmObj>) -> Option<Road
 }
 
 fn get_roads(objs: &BTreeMap<OsmId, OsmObj>) -> Vec<Road> {
+    let name_groups = objs
+        .values()
+        .filter_map(|obj| {
+            let way = obj.way()?;
+            let name = way.tags.get("name")?;
+            Some((name, obj))
+        })
+        .into_group_map();
+
     let mut roads: Vec<Road> = vec![];
-    for obj in objs.values() {
-        if let Some(road_segment) = get_road_segment(obj, objs) {
-            // does the segment fit to the end of sth?
-            if let Some(road) = roads.iter_mut().find(|road| road_segment.is_tail_of(road)) {
-                road.append(road_segment);
-                continue;
-            }
-
-            // does the segment fit to the beginning of sth?
-            if let Some(road) = roads.iter_mut().find(|road| road_segment.is_head_of(road)) {
-                road.prepend(road_segment);
-                continue;
-            }
-
-            // otherwise push it as new road
-            roads.push(road_segment);
+    for (name, group) in name_groups.into_iter() {
+        println!("name group: {}", name);
+        let nested_coordinates: Vec<Vec<(f64, f64)>> = group
+            .iter()
+            .filter_map(|obj| {
+                let road = get_road_segment(obj, objs)?;
+                Some(road.coordinates)
+            })
+            .collect();
+        let coordinate_chains = nested_coordinates.chain();
+        for chain in coordinate_chains {
+            let chained_road = Road {
+                name: name.to_owned(),
+                coordinates: chain,
+            };
+            roads.push(chained_road);
         }
     }
 
@@ -321,12 +277,11 @@ pub fn extract_streets(
     println!("{} ways found", ways.len());
 
     let roads = get_roads(&objs);
-    for road in roads {
-        if road.name == "Alexanderstraße" {
-            // println!("road {} found with {} ways", road.name, road.ways.len());
-            println!("{}", road.to_geojson()?);
-        }
-    }
+    let alexanderstrasse_roads: Vec<Road> = roads
+        .into_iter()
+        .filter(|road| road.name == "Alexanderstraße")
+        .collect();
+    println!("{}", alexanderstrasse_roads.to_geojson()?);
 
     Ok(())
 }
@@ -367,75 +322,46 @@ mod roads {
         };
     }
 
-    #[test]
-    fn is_connected_to() {
-        use Connection::*;
-
-        let road_1 = road![(1., 1.), (2., 2.)];
-        let road_2 = road![(2., 2.), (3., 3.)];
-
-        assert_eq!(road_1.is_connected_to(&road_2), Some(Tail));
-        assert_eq!(road_2.is_connected_to(&road_1), Some(Head));
-
-        let road_3 = road![(3., 3.), (2., 2.)];
-        assert_eq!(road_1.is_connected_to(&road_3), Some(ReverseTail));
-
-        let road_4 = road![(2., 2.), (1., 1.)];
-        assert_eq!(road_2.is_connected_to(&road_4), Some(ReverseHead));
-
-        let road_5 = road![(3., 3.), (4., 4.)];
-        assert_eq!(road_1.is_connected_to(&road_5), None);
+    macro_rules! chain {
+        ($($x: expr), *) => {
+            vec![$($x.coordinates), *].chain()
+        };
     }
 
     #[test]
     fn merge_tail() {
-        let mut road_1 = road![(1., 1.), (2., 2.)];
+        let road_1 = road![(1., 1.), (2., 2.)];
         let road_2 = road![(2., 2.), (3., 3.)];
 
-        road_1.merge(road_2, &Connection::Tail);
-        assert_eq!(
-            road_1.coordinates,
-            vec![(1., 1.), (2., 2.), (2., 2.), (3., 3.)]
-        );
+        let coordinates = chain![road_1, road_2];
+        assert_eq!(coordinates, vec![vec![(1., 1.), (2., 2.), (3., 3.)]]);
     }
 
     #[test]
     fn merge_head() {
-        let mut road_1 = road![(2., 2.), (3., 3.)];
+        let road_1 = road![(2., 2.), (3., 3.)];
         let road_2 = road![(1., 1.), (2., 2.)];
 
-        road_1.merge(road_2, &Connection::Head);
-
-        assert_eq!(
-            road_1.coordinates,
-            vec![(1., 1.), (2., 2.), (2., 2.), (3., 3.)]
-        );
+        let coordinates = chain![road_1, road_2];
+        assert_eq!(coordinates, vec![vec![(1., 1.), (2., 2.), (3., 3.)]]);
     }
 
     #[test]
     fn merge_reverse_tail() {
-        let mut road_1 = road![(1., 1.), (2., 2.)];
+        let road_1 = road![(1., 1.), (2., 2.)];
         let road_2 = road![(3., 3.), (2., 2.)];
 
-        road_1.merge(road_2, &Connection::ReverseTail);
-
-        assert_eq!(
-            road_1.coordinates,
-            vec![(1., 1.), (2., 2.), (2., 2.), (3., 3.)]
-        );
+        let coordinates = chain![road_1, road_2];
+        assert_eq!(coordinates, vec![vec![(1., 1.), (2., 2.), (3., 3.)]]);
     }
 
     #[test]
     fn merge_reverse_head() {
-        let mut road_1 = road![(2., 2.), (3., 3.)];
+        let road_1 = road![(2., 2.), (3., 3.)];
         let road_2 = road![(2., 2.), (1., 1.)];
 
-        road_1.merge(road_2, &Connection::ReverseHead);
-
-        assert_eq!(
-            road_1.coordinates,
-            vec![(1., 1.), (2., 2.), (2., 2.), (3., 3.)]
-        );
+        let coordinates = chain![road_1, road_2];
+        assert_eq!(coordinates, vec![vec![(1., 1.), (2., 2.), (3., 3.)]]);
     }
 }
 
