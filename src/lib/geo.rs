@@ -14,6 +14,7 @@ impl PartialEq<Location> for Location {
         let self_point = Point::new(self.lon, self.lat);
         let other_point = Point::new(other.lon, other.lat);
         let distance = self_point.haversine_distance(&other_point);
+        // 5.0e-8 might be a good value
         distance < COORD_PRECISION.into()
     }
 }
@@ -24,15 +25,6 @@ impl From<&(f64, f64)> for Location {
             lon: coordinates.0,
             lat: coordinates.1,
         }
-    }
-}
-
-impl Location {
-    pub fn is_close_to(&self, other: &Self) -> bool {
-        let self_point = Point::new(self.lon, self.lat);
-        let other_point = Point::new(other.lon, other.lat);
-        let distance = self_point.euclidean_distance(&other_point);
-        distance < 5.0e-8
     }
 }
 

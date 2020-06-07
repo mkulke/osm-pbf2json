@@ -164,18 +164,6 @@ enum Entity {
     },
 }
 
-trait Coordinates {
-    fn is_close_to(&self, coordinate: &(f64, f64)) -> bool;
-}
-
-impl Coordinates for (f64, f64) {
-    fn is_close_to(&self, coordinate: &(f64, f64)) -> bool {
-        let loc_1: Location = coordinate.into();
-        let loc_2: Location = self.into();
-        loc_1.is_close_to(&loc_2)
-    }
-}
-
 trait GeojsonExt {
     fn to_geojson(&self) -> Result<String, Box<dyn Error>>;
 }
@@ -281,6 +269,7 @@ pub fn extract_streets(
         .into_iter()
         .filter(|road| road.name == "Alexanderstraße")
         .collect();
+    println!("{} roads left", alexanderstrasse_roads.len());
     println!("{}", alexanderstrasse_roads.to_geojson()?);
 
     Ok(())
