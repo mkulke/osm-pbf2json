@@ -1,6 +1,6 @@
 use self::geo::{get_compound_coordinates, get_geo_info, Bounds, Location};
 use chainable::Chainable;
-use filter::{filter, parse, Group};
+use filter::{filter, Condition, Group};
 use itertools::Itertools;
 use osmpbfreader::objects::{Node, OsmId, OsmObj, Relation, Tags, Way};
 use osmpbfreader::OsmPbfReader;
@@ -172,6 +172,7 @@ impl GeojsonExt for Vec<Road> {
     fn to_geojson(&self) -> Result<String, Box<dyn Error>> {
         let features = self
             .iter()
+            .filter(|road| road.coordinates.len() >= 2)
             .map(|road| {
                 let coordinates = road.coordinates.clone();
                 let geometry = Geometry::LineString { coordinates };
@@ -232,7 +233,7 @@ fn get_roads(objs: &BTreeMap<OsmId, OsmObj>) -> Vec<Road> {
 
     let mut roads: Vec<Road> = vec![];
     for (name, group) in name_groups.into_iter() {
-        println!("name group: {}", name);
+        // println!("name group: {}", name);
         let mut nested_coordinates: Vec<Vec<(f64, f64)>> = group
             .iter()
             .filter_map(|obj| {
@@ -253,24 +254,32 @@ fn get_roads(objs: &BTreeMap<OsmId, OsmObj>) -> Vec<Road> {
     roads
 }
 
+fn build_street_group() -> Vec<Group> {
+    let values = vec!["primary", "secondary", "tertiary", "residential", "service"];
+
+    let groups = values
+        .iter()
+        .map(|val| {
+            let highway_match = Condition::ValueMatch("highway".to_string(), val.to_string());
+            let name_presence = Condition::TagPresence("name".to_string());
+            let conditions = vec![highway_match, name_presence];
+            Group { conditions }
+        })
+        .collect();
+    groups
+}
+
 pub fn extract_streets(
     file: impl Seek + Read,
-    _writer: &mut dyn Write,
+    writer: &mut dyn Write,
 ) -> Result<(), Box<dyn Error>> {
     let mut pbf = OsmPbfReader::new(file);
-    let groups = parse("highway~primary+name+postal_code".to_string());
+    let groups = build_street_group();
     let objs = pbf.get_objs_and_deps(|obj| filter(obj, &groups))?;
 
-    let ways: Vec<&Way> = objs.values().filter_map(|obj| obj.way()).collect();
-    println!("{} ways found", ways.len());
-
     let roads = get_roads(&objs);
-    let alexanderstrasse_roads: Vec<Road> = roads
-        .into_iter()
-        .filter(|road| road.name == "Alexanderstraße")
-        .collect();
-    println!("{} roads left", alexanderstrasse_roads.len());
-    println!("{}", alexanderstrasse_roads.to_geojson()?);
+    let geojson = roads.to_geojson()?;
+    writeln!(writer, "{}", geojson)?;
 
     Ok(())
 }

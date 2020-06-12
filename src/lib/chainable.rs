@@ -18,9 +18,7 @@ trait Prependable<T> {
 
 impl<T: Copy> Prependable<T> for Vec<T> {
     fn prepend(&mut self, other: &[T]) {
-        for element in other.iter().rev() {
-            self.insert(0, *element);
-        }
+        *self = [other, self].concat();
     }
 
     fn reverse_prepend(&mut self, other: &[T]) {
@@ -30,9 +28,7 @@ impl<T: Copy> Prependable<T> for Vec<T> {
     }
 
     fn reverse_extend(&mut self, other: &[T]) {
-        for element in other.iter().rev() {
-            self.push(*element);
-        }
+        self.extend(other.iter().rev());
     }
 }
 
