@@ -23,6 +23,8 @@ enum Cli {
     Streets {
         #[structopt(flatten)]
         shared_opts: SharedOpts,
+        #[structopt(short, long)]
+        geo_json: bool,
     },
 }
 
@@ -36,9 +38,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             let groups = filter::parse(tags);
             process(file, &mut handle, &groups)?;
         }
-        Cli::Streets { shared_opts } => {
+        Cli::Streets {
+            shared_opts,
+            geo_json,
+        } => {
             let file = File::open(shared_opts.path)?;
-            extract_streets(file, &mut handle)?;
+            extract_streets(file, &mut handle, geo_json)?;
         }
     }
     Ok(())

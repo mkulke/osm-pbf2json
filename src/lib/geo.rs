@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Location {
-    lat: f64,
-    lon: f64,
+    pub lat: f64,
+    pub lon: f64,
 }
 
 impl PartialEq<Location> for Location {
@@ -85,21 +85,34 @@ fn get_bounds(geometry: &Geometry<f64>) -> Option<Bounds> {
     })
 }
 
-fn get_centroid(geometry: &Geometry<f64>) -> Option<Location> {
-    let point = match geometry {
-        Geometry::LineString(ls) => ls.centroid(),
-        Geometry::Polygon(p) => p.centroid(),
-        _ => None,
-    }?;
-    Some(Location {
-        lat: point.lat(),
-        lon: point.lng(),
-    })
+pub trait Centerable {
+    fn get_centroid(&self) -> Option<Location>;
+}
+
+impl Centerable for Vec<(f64, f64)> {
+    fn get_centroid(&self) -> Option<Location> {
+        let geometry = get_geometry(self.clone())?;
+        geometry.get_centroid()
+    }
+}
+
+impl Centerable for Geometry<f64> {
+    fn get_centroid(&self) -> Option<Location> {
+        let point = match self {
+            Geometry::LineString(ls) => ls.centroid(),
+            Geometry::Polygon(p) => p.centroid(),
+            _ => None,
+        }?;
+        Some(Location {
+            lat: point.lat(),
+            lon: point.lng(),
+        })
+    }
 }
 
 pub fn get_geo_info(coordinates: Vec<(f64, f64)>) -> (Option<Location>, Option<Bounds>) {
     if let Some(geo) = get_geometry(coordinates) {
-        let centroid = get_centroid(&geo);
+        let centroid = geo.get_centroid();
         let bounds = get_bounds(&geo);
         return (centroid, bounds);
     }

@@ -35,7 +35,7 @@ pub fn extract_streets_bench(c: &mut Criterion) {
         b.iter(|| {
             let file = File::open("./tests/data/alexanderplatz.pbf").unwrap();
             let mut writer = MockWriter;
-            extract_streets(file, &mut writer).unwrap();
+            extract_streets(file, &mut writer, false).unwrap();
         })
     });
     group.finish();
