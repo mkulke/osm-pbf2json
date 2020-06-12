@@ -141,7 +141,7 @@ fn build_street_group() -> Vec<Group> {
         .collect()
 }
 
-pub fn extract_streets(
+pub fn extract_roads(
     file: impl Seek + Read,
     writer: &mut dyn Write,
     geo_json: bool,

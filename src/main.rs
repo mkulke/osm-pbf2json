@@ -1,4 +1,4 @@
-use lib::{extract_streets, filter, process};
+use lib::{extract_roads, filter, process};
 use std::error::Error;
 use std::fs::File;
 use std::io;
@@ -20,7 +20,7 @@ enum Cli {
         #[structopt(flatten)]
         shared_opts: SharedOpts,
     },
-    Streets {
+    Roads {
         #[structopt(flatten)]
         shared_opts: SharedOpts,
         #[structopt(short, long)]
@@ -38,12 +38,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             let groups = filter::parse(tags);
             process(file, &mut handle, &groups)?;
         }
-        Cli::Streets {
+        Cli::Roads {
             shared_opts,
             geo_json,
         } => {
             let file = File::open(shared_opts.path)?;
-            extract_streets(file, &mut handle, geo_json)?;
+            extract_roads(file, &mut handle, geo_json)?;
         }
     }
     Ok(())
