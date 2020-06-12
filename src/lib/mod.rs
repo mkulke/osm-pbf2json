@@ -257,16 +257,15 @@ fn get_roads(objs: &BTreeMap<OsmId, OsmObj>) -> Vec<Road> {
 fn build_street_group() -> Vec<Group> {
     let values = vec!["primary", "secondary", "tertiary", "residential", "service"];
 
-    let groups = values
-        .iter()
+    values
+        .into_iter()
         .map(|val| {
             let highway_match = Condition::ValueMatch("highway".to_string(), val.to_string());
             let name_presence = Condition::TagPresence("name".to_string());
             let conditions = vec![highway_match, name_presence];
             Group { conditions }
         })
-        .collect();
-    groups
+        .collect()
 }
 
 pub fn extract_streets(
