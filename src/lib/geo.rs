@@ -182,6 +182,13 @@ pub fn get_compound_coordinates(coordinates: Vec<(f64, f64)>) -> Vec<(f64, f64)>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use approx::*;
+
+    fn approx_eq<T: Into<[f64; 2]>>(a: [f64; 2], o: Option<T>) {
+        let b: [f64; 2] = o.unwrap().into();
+        relative_eq!(a[0], b[0], epsilon = f64::EPSILON);
+        relative_eq!(a[1], b[1], epsilon = f64::EPSILON);
+    }
 
     #[test]
     fn get_centroid_for_line() {
@@ -190,8 +197,7 @@ mod tests {
         //  c
         //
         // 0
-        let centroid: [f64; 2] = coordinates.get_centroid().unwrap().into();
-        assert_eq!([9.25, 50.75], centroid);
+        approx_eq([9.25, 50.75], coordinates.get_centroid());
     }
 
     #[test]
@@ -201,8 +207,7 @@ mod tests {
         //
         //
         // 0
-        let middle: [f64; 2] = coordinates.get_middle().unwrap().into();
-        assert_eq!([9., 51.], middle);
+        approx_eq([9., 51.], coordinates.get_middle());
     }
 
     #[test]
