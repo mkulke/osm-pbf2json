@@ -35,7 +35,7 @@ pub fn extract_roads_bench(c: &mut Criterion) {
         b.iter(|| {
             let file = File::open("./tests/data/alexanderplatz.pbf").unwrap();
             let mut writer = MockWriter;
-            extract_roads(file, &mut writer, false).unwrap();
+            extract_roads(file, &mut writer, false, None).unwrap();
         })
     });
     group.finish();

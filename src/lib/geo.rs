@@ -1,7 +1,8 @@
 use geo::prelude::*;
 use geo::COORD_PRECISION;
-use geo_types::{Geometry, LineString, MultiPoint, Point, Polygon};
+use geo_types::{Coordinate, Geometry, LineString, MultiPoint, Point, Polygon};
 use serde::{Deserialize, Serialize};
+use std::convert::TryInto;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Location {
@@ -24,6 +25,30 @@ impl From<&(f64, f64)> for Location {
         Location {
             lon: coordinates.0,
             lat: coordinates.1,
+        }
+    }
+}
+
+impl From<Location> for [f64; 2] {
+    fn from(loc: Location) -> Self {
+        [loc.lon, loc.lat]
+    }
+}
+
+impl From<Point<f64>> for Location {
+    fn from(point: Point<f64>) -> Self {
+        Location {
+            lat: point.lat(),
+            lon: point.lng(),
+        }
+    }
+}
+
+impl From<Coordinate<f64>> for Location {
+    fn from(coordinate: Coordinate<f64>) -> Self {
+        Location {
+            lat: coordinate.y,
+            lon: coordinate.x,
         }
     }
 }
@@ -87,12 +112,33 @@ fn get_bounds(geometry: &Geometry<f64>) -> Option<Bounds> {
 
 pub trait Centerable {
     fn get_centroid(&self) -> Option<Location>;
+    fn get_middle(&self) -> Option<Location>;
+}
+
+fn get_closest_element<T: Into<Point<f64>> + Copy>(
+    elements: impl IntoIterator<Item = T>,
+    point: Point<f64>,
+) -> Option<T> {
+    elements.into_iter().min_by(|a, b| {
+        let a_point: Point<f64> = (*a).into();
+        let a_dis: f64 = point.euclidean_distance(&a_point);
+        let b_point: Point<f64> = (*b).into();
+        let b_dis: f64 = point.euclidean_distance(&b_point);
+        a_dis.partial_cmp(&b_dis).unwrap()
+    })
 }
 
 impl Centerable for Vec<(f64, f64)> {
     fn get_centroid(&self) -> Option<Location> {
         let geometry = get_geometry(self.clone())?;
         geometry.get_centroid()
+    }
+
+    fn get_middle(&self) -> Option<Location> {
+        let line_string: LineString<f64> = self.clone().try_into().ok()?;
+        let centroid = line_string.centroid()?;
+        let closest_element = get_closest_element(line_string, centroid)?;
+        Some(closest_element.into())
     }
 }
 
@@ -103,10 +149,14 @@ impl Centerable for Geometry<f64> {
             Geometry::Polygon(p) => p.centroid(),
             _ => None,
         }?;
-        Some(Location {
-            lat: point.lat(),
-            lon: point.lng(),
-        })
+        Some(point.into())
+    }
+
+    fn get_middle(&self) -> Option<Location> {
+        let multi_points: MultiPoint<f64> = self.clone().try_into().ok()?;
+        let centroid = multi_points.centroid()?;
+        let closest_element = get_closest_element(multi_points, centroid)?;
+        Some(closest_element.into())
     }
 }
 
@@ -132,6 +182,28 @@ pub fn get_compound_coordinates(coordinates: Vec<(f64, f64)>) -> Vec<(f64, f64)>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn get_centroid_for_line() {
+        let coordinates = vec![(9., 50.), (9., 51.), (10., 51.)];
+        // 1     2
+        //  c
+        //
+        // 0
+        let centroid: [f64; 2] = coordinates.get_centroid().unwrap().into();
+        assert_eq!([9.25, 50.75], centroid);
+    }
+
+    #[test]
+    fn get_middle_for_line() {
+        let coordinates = vec![(9., 50.), (9., 51.), (10., 51.)];
+        // 1/m    2
+        //
+        //
+        // 0
+        let middle: [f64; 2] = coordinates.get_middle().unwrap().into();
+        assert_eq!([9., 51.], middle);
+    }
 
     #[test]
     fn get_geo_info_open() {

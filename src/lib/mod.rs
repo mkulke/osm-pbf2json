@@ -127,15 +127,21 @@ impl SerializeNode for Node {
     }
 }
 
-fn build_street_group() -> Vec<Group> {
+fn build_street_group(name: Option<String>) -> Vec<Group> {
+    use Condition::*;
+
     let values = vec!["primary", "secondary", "tertiary", "residential", "service"];
+
+    let name_condition = match name {
+        Some(name) => ValueMatch("name".to_string(), name),
+        None => TagPresence("name".to_string()),
+    };
 
     values
         .into_iter()
         .map(|val| {
-            let highway_match = Condition::ValueMatch("highway".to_string(), val.to_string());
-            let name_presence = Condition::TagPresence("name".to_string());
-            let conditions = vec![highway_match, name_presence];
+            let highway_match = ValueMatch("highway".to_string(), val.to_string());
+            let conditions = vec![highway_match, name_condition.clone()];
             Group { conditions }
         })
         .collect()
@@ -145,9 +151,10 @@ pub fn extract_roads(
     file: impl Seek + Read,
     writer: &mut dyn Write,
     geo_json: bool,
+    name: Option<String>,
 ) -> Result<(), Box<dyn Error>> {
     let mut pbf = OsmPbfReader::new(file);
-    let groups = build_street_group();
+    let groups = build_street_group(name);
     let objs = pbf.get_objs_and_deps(|obj| filter(obj, &groups))?;
     let roads = get_roads(&objs);
     if geo_json {

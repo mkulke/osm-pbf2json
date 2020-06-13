@@ -49,12 +49,12 @@ impl OutputExt for Vec<Road> {
     fn write_json_lines(self, writer: &mut dyn Write) -> Result<(), Box<dyn Error>> {
         for (idx, road) in self.into_iter().enumerate() {
             let id = 420_000_000 + idx as i64;
-            let centroid = road
+            let middle = road
                 .coordinates
-                .get_centroid()
-                .ok_or("could not calculate centroid")?;
+                .get_middle()
+                .ok_or("could not calculate middle")?;
             let name = road.name;
-            let loc = [centroid.lon, centroid.lat];
+            let loc = middle.into();
             let json_street = JSONStreet { id, name, loc };
             let json = to_string(&json_street)?;
             writeln!(writer, "{}", json)?;
