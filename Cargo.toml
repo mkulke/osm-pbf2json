@@ -15,6 +15,8 @@ osmpbfreader = "0.13"
 geo = "0.13"
 geo-types = "0.5"
 rand = "0.7"
+petgraph = "0.5"
+rstar = "0.8"
 
 [dev-dependencies]
 criterion = "0.3"
