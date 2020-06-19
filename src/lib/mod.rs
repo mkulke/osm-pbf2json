@@ -9,10 +9,9 @@ use std::error::Error;
 use std::io::{Read, Seek, Write};
 use streets::{get_streets, OutputExt};
 
-pub mod chainable;
 pub mod filter;
 mod geo;
-pub mod streets;
+mod streets;
 
 #[derive(Serialize, Deserialize)]
 struct JSONNode {
