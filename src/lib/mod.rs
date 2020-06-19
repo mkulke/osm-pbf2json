@@ -2,17 +2,19 @@ use self::geo::{get_compound_coordinates, get_geo_info, Bounds, Location};
 use filter::{filter, Condition, Group};
 use osmpbfreader::objects::{Node, OsmId, OsmObj, Relation, Tags, Way};
 use osmpbfreader::OsmPbfReader;
-use roads::{get_roads, OutputExt};
+// use roads::{get_roads, OutputExt};
 use serde::{Deserialize, Serialize};
 use serde_json::to_string;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::io::{Read, Seek, Write};
+use streets::{get_streets, OutputExt};
 
 pub mod chainable;
 pub mod filter;
 mod geo;
 pub mod roads;
+pub mod streets;
 
 #[derive(Serialize, Deserialize)]
 struct JSONNode {
@@ -156,7 +158,7 @@ pub fn extract_roads(
     let mut pbf = OsmPbfReader::new(file);
     let groups = build_street_group(name);
     let objs = pbf.get_objs_and_deps(|obj| filter(obj, &groups))?;
-    let roads = get_roads(&objs);
+    let roads = get_streets(&objs);
     if geo_json {
         let geojson = roads.to_geojson()?;
         writeln!(writer, "{}", geojson)?;
