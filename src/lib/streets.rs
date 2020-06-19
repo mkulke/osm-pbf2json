@@ -1,7 +1,6 @@
 use super::geo::Centerable;
 use geo::algorithm::bounding_rect::BoundingRect;
-use geo::algorithm::intersects::Intersects;
-use geo_types::LineString;
+use geo_types::{LineString, Point};
 use itertools::Itertools;
 use osmpbfreader::objects::{OsmId, OsmObj, Way, WayId};
 use petgraph::algo::kosaraju_scc;
@@ -16,6 +15,8 @@ use std::convert::{TryFrom, TryInto};
 use std::error::Error;
 use std::hash::{Hash, Hasher};
 use std::io::Write;
+
+const RTREE_PADDING: f64 = 0.0005;
 
 #[derive(Serialize, Deserialize)]
 struct JSONStreet {
@@ -125,12 +126,10 @@ fn get_segments(ways: &Vec<&Way>, objs: &BTreeMap<OsmId, OsmObj>) -> Vec<Segment
 fn get_intersections(tree: &RTree<Segment>) -> HashSet<(&Segment, &Segment)> {
     let mut intersections = HashSet::new();
     for segment in tree.iter() {
-        let envelope = segment.envelope();
-        let intersecting_segments = tree.locate_in_envelope_intersecting(&envelope);
+        // let envelope = segment.envelope();
+        let padded_envelope = segment.envelope().pad();
+        let intersecting_segments = tree.locate_in_envelope_intersecting(&padded_envelope);
         for other_segment in intersecting_segments {
-            if !segment.line_string.intersects(&other_segment.line_string) {
-                continue;
-            }
             let tuple = if segment.way_id < other_segment.way_id {
                 (segment, other_segment)
             } else {
@@ -275,16 +274,26 @@ impl RTreeObject for Segment {
     }
 }
 
-impl RTreeObject for &Segment {
-    type Envelope = AABB<[f64; 2]>;
+trait Padding {
+    fn pad(&self) -> Self;
+}
 
-    fn envelope(&self) -> Self::Envelope {
-        AABB::from_corners(self.bounding_box.sw, self.bounding_box.ne)
+impl Padding for AABB<[f64; 2]> {
+    fn pad(&self) -> Self {
+        let sw: Point<f64> = self.lower().into();
+        let ne: Point<f64> = self.upper().into();
+        let padding: Point<f64> = (RTREE_PADDING, RTREE_PADDING).into();
+        let sw_padded = sw - padding;
+        let ne_padded = ne + padding;
+        AABB::from_corners(
+            [sw_padded.lng(), sw_padded.lat()],
+            [ne_padded.lng(), ne_padded.lat()],
+        )
     }
 }
 
 #[cfg(test)]
-mod get_roads {
+mod get_streets {
     use super::*;
     use osmpbfreader::objects::{Node, NodeId, Tags, Way, WayId};
     use std::collections::BTreeMap;
@@ -375,12 +384,6 @@ mod get_roads {
         let streets = get_streets(&objs);
         assert_eq!(streets.len(), 2);
     }
-}
-
-#[cfg(test)]
-mod get_streets {
-    use super::*;
-    use osmpbfreader::objects::WayId;
 
     fn create_segment(id: i64, coordinates: Vec<(f64, f64)>) -> Segment {
         let line_string: LineString<f64> = coordinates.into();
