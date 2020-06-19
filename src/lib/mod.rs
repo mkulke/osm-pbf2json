@@ -2,7 +2,6 @@ use self::geo::{get_compound_coordinates, get_geo_info, Bounds, Location};
 use filter::{filter, Condition, Group};
 use osmpbfreader::objects::{Node, OsmId, OsmObj, Relation, Tags, Way};
 use osmpbfreader::OsmPbfReader;
-// use roads::{get_roads, OutputExt};
 use serde::{Deserialize, Serialize};
 use serde_json::to_string;
 use std::collections::BTreeMap;
@@ -13,7 +12,6 @@ use streets::{get_streets, OutputExt};
 pub mod chainable;
 pub mod filter;
 mod geo;
-pub mod roads;
 pub mod streets;
 
 #[derive(Serialize, Deserialize)]

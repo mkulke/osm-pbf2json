@@ -1,6 +1,8 @@
-use super::geo::Centerable;
 use geo::algorithm::bounding_rect::BoundingRect;
-use geo_types::{LineString, Point};
+use geo::algorithm::centroid::Centroid;
+use geo::algorithm::closest_point::ClosestPoint;
+use geo::Closest;
+use geo_types::{LineString, MultiPoint, Point};
 use itertools::Itertools;
 use osmpbfreader::objects::{OsmId, OsmObj, Way, WayId};
 use petgraph::algo::kosaraju_scc;
@@ -16,13 +18,13 @@ use std::error::Error;
 use std::hash::{Hash, Hasher};
 use std::io::Write;
 
-const RTREE_PADDING: f64 = 0.0005;
+const RTREE_PADDING: f64 = 0.001;
 
 #[derive(Serialize, Deserialize)]
 struct JSONStreet {
     id: i64,
     name: String,
-    loc: [f64; 2],
+    loc: (f64, f64),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -51,7 +53,15 @@ pub trait OutputExt {
 
 impl OutputExt for Vec<Street> {
     fn write_json_lines(self, writer: &mut dyn Write) -> Result<(), Box<dyn Error>> {
-        unimplemented!();
+        for street in self.iter() {
+            let id = street.id();
+            let loc = street.middle().ok_or("could not calculate middle")?;
+            let name = street.name.clone();
+            let json_street = JSONStreet { id, name, loc };
+            let json = to_string(&json_street)?;
+            writeln!(writer, "{}", json)?;
+        }
+        Ok(())
     }
 
     fn to_geojson(&self) -> Result<String, Box<dyn Error>> {
@@ -107,17 +117,45 @@ impl From<&Segment> for Vec<(f64, f64)> {
     }
 }
 
-fn get_line_string(way: &Way, objs: &BTreeMap<OsmId, OsmObj>) -> Option<LineString<f64>> {
-    let coordinates = way.nodes.iter().filter_map(|&node_id| {
-        let obj = objs.get(&node_id.into())?;
-        let node = obj.node()?;
-        let coordinate = (node.lon(), node.lat());
-        Some(coordinate)
-    });
-    Some(coordinates.into_iter().collect())
+impl Street {
+    fn id(&self) -> i64 {
+        let ids: Vec<WayId> = self.segments.iter().map(|segment| segment.way_id).collect();
+        let mut hash = 0;
+        for id in ids.iter() {
+            hash ^= id.0;
+        }
+        hash
+    }
+
+    fn middle(&self) -> Option<(f64, f64)> {
+        let coordinates: Vec<Vec<(f64, f64)>> = self.into();
+        let flattened: Vec<(f64, f64)> = coordinates.into_iter().flatten().collect();
+        let multi_points: MultiPoint<f64> = flattened.into();
+        let centroid = multi_points.centroid()?;
+        let closest = multi_points.closest_point(&centroid);
+        match closest {
+            Closest::Intersection(p) => Some((p.lng(), p.lat())),
+            Closest::SinglePoint(p) => Some((p.lng(), p.lat())),
+            _ => None,
+        }
+    }
 }
 
-fn get_segments(ways: &Vec<&Way>, objs: &BTreeMap<OsmId, OsmObj>) -> Vec<Segment> {
+fn get_line_string(way: &Way, objs: &BTreeMap<OsmId, OsmObj>) -> Option<LineString<f64>> {
+    let coordinates = way
+        .nodes
+        .iter()
+        .filter_map(|&node_id| {
+            let obj = objs.get(&node_id.into())?;
+            let node = obj.node()?;
+            let coordinate = (node.lon(), node.lat());
+            Some(coordinate)
+        })
+        .collect();
+    Some(coordinates)
+}
+
+fn get_segments(ways: &[&Way], objs: &BTreeMap<OsmId, OsmObj>) -> Vec<Segment> {
     ways.iter()
         .filter_map(|way| Segment::new(way, objs).ok())
         .collect()
@@ -428,11 +466,11 @@ mod get_streets {
     }
 
     #[test]
-    fn cluster_not_touching() {
+    fn cluster_not_touching_but_overlapping_bbox() {
         let seg_1 = create_segment(42, vec![(1., 1.), (3., 3.)]);
         let seg_2 = create_segment(43, vec![(2., 0.), (3., 2.)]);
         let segments = vec![seg_1, seg_2];
         let clusters = get_clusters(segments);
-        assert_eq!(clusters.len(), 2);
+        assert_eq!(clusters.len(), 1);
     }
 }
