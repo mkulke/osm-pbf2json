@@ -132,7 +132,14 @@ impl SerializeNode for Node {
 fn build_street_group(name: Option<String>) -> Vec<Group> {
     use Condition::*;
 
-    let values = vec!["primary", "secondary", "tertiary", "residential", "service"];
+    let values = vec![
+        "primary",
+        "secondary",
+        "tertiary",
+        "residential",
+        "service",
+        "living_street",
+    ];
 
     let name_condition = match name {
         Some(name) => ValueMatch("name".to_string(), name),
