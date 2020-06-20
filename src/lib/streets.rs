@@ -1,8 +1,4 @@
-use geo::algorithm::bounding_rect::BoundingRect;
-use geo::algorithm::centroid::Centroid;
-use geo::algorithm::closest_point::ClosestPoint;
-use geo::Closest;
-use geo_types::{LineString, MultiPoint, Point};
+use super::geo::{Midpoint, SegmentGeometry};
 use itertools::Itertools;
 use osmpbfreader::objects::{OsmId, OsmObj, Way, WayId};
 use petgraph::algo::kosaraju_scc;
@@ -13,7 +9,6 @@ use rstar::{RTreeObject, AABB};
 use serde::{Deserialize, Serialize};
 use serde_json::to_string;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::convert::{TryFrom, TryInto};
 use std::error::Error;
 use std::hash::{Hash, Hasher};
 use std::io::Write;
@@ -30,7 +25,6 @@ struct JSONStreet {
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type")]
 enum Geometry {
-    LineString { coordinates: Vec<(f64, f64)> },
     MultiLineString { coordinates: Vec<Vec<(f64, f64)>> },
 }
 
@@ -68,15 +62,16 @@ impl OutputExt for Vec<Street> {
         let features = self
             .iter()
             .filter_map(|street| {
-                let coordinates: Vec<_> = street
+                let geometries: Vec<_> = street
                     .segments
                     .iter()
-                    .filter(|segment| segment.len() >= 2)
-                    .map(|segment| segment.into())
+                    .filter(|segment| segment.geometry.len() >= 2)
+                    .map(|segment| segment.geometry.clone())
                     .collect();
-                if coordinates.is_empty() {
+                if geometries.is_empty() {
                     return None;
                 }
+                let coordinates = geometries.iter().map(|g| g.into()).collect();
                 let geometry = Geometry::MultiLineString { coordinates };
                 let r = random::<u8>();
                 let g = random::<u8>();
@@ -101,22 +96,6 @@ impl OutputExt for Vec<Street> {
     }
 }
 
-impl Segment {
-    fn len(&self) -> usize {
-        self.line_string.points_iter().count()
-    }
-}
-
-impl From<&Segment> for Vec<(f64, f64)> {
-    fn from(segment: &Segment) -> Vec<(f64, f64)> {
-        segment
-            .line_string
-            .points_iter()
-            .map(|c| (c.x(), c.y()))
-            .collect()
-    }
-}
-
 impl Street {
     fn id(&self) -> i64 {
         let ids: Vec<WayId> = self.segments.iter().map(|segment| segment.way_id).collect();
@@ -128,20 +107,16 @@ impl Street {
     }
 
     fn middle(&self) -> Option<(f64, f64)> {
-        let coordinates: Vec<Vec<(f64, f64)>> = self.into();
-        let flattened: Vec<(f64, f64)> = coordinates.into_iter().flatten().collect();
-        let multi_points: MultiPoint<f64> = flattened.into();
-        let centroid = multi_points.centroid()?;
-        let closest = multi_points.closest_point(&centroid);
-        match closest {
-            Closest::Intersection(p) => Some((p.lng(), p.lat())),
-            Closest::SinglePoint(p) => Some((p.lng(), p.lat())),
-            _ => None,
-        }
+        let geometries: Vec<&SegmentGeometry> = self
+            .segments
+            .iter()
+            .map(|segment| &segment.geometry)
+            .collect();
+        geometries.midpoint()
     }
 }
 
-fn get_line_string(way: &Way, objs: &BTreeMap<OsmId, OsmObj>) -> Option<LineString<f64>> {
+fn get_coordinates(way: &Way, objs: &BTreeMap<OsmId, OsmObj>) -> Option<Vec<(f64, f64)>> {
     let coordinates = way
         .nodes
         .iter()
@@ -164,8 +139,8 @@ fn get_segments(ways: &[&Way], objs: &BTreeMap<OsmId, OsmObj>) -> Vec<Segment> {
 fn get_intersections(tree: &RTree<Segment>) -> HashSet<(&Segment, &Segment)> {
     let mut intersections = HashSet::new();
     for segment in tree.iter() {
-        // let envelope = segment.envelope();
-        let padded_envelope = segment.envelope().pad();
+        let (sw, ne) = segment.geometry.padded_sw_ne(RTREE_PADDING);
+        let padded_envelope = AABB::from_corners(sw, ne);
         let intersecting_segments = tree.locate_in_envelope_intersecting(&padded_envelope);
         for other_segment in intersecting_segments {
             let tuple = if segment.way_id < other_segment.way_id {
@@ -193,7 +168,6 @@ fn get_clusters(segments: Vec<Segment>) -> Vec<Vec<Segment>> {
     for intersection in intersections.iter() {
         let idx_a = segment_idx_map[intersection.0];
         let idx_b = segment_idx_map[intersection.1];
-        // println!("Add graph {:?} -> {:?}", idx_a, idx_b);
         graph.add_edge(idx_a, idx_b, ());
     }
 
@@ -242,7 +216,7 @@ impl From<&Street> for Vec<Vec<(f64, f64)>> {
         street
             .segments
             .iter()
-            .map(|segment| segment.into())
+            .map(|segment| segment.geometry.clone().into())
             .collect()
     }
 }
@@ -250,8 +224,7 @@ impl From<&Street> for Vec<Vec<(f64, f64)>> {
 #[derive(Clone, Debug)]
 struct Segment {
     way_id: WayId,
-    bounding_box: BoundingBox,
-    line_string: LineString<f64>,
+    geometry: SegmentGeometry,
 }
 
 impl Hash for Segment {
@@ -271,62 +244,20 @@ impl Eq for Segment {}
 impl Segment {
     fn new(way: &Way, objs: &BTreeMap<OsmId, OsmObj>) -> Result<Self, &'static str> {
         let way_id = way.id;
-        let line_string =
-            get_line_string(way, objs).ok_or("could not construct line string for way")?;
-        let bounding_box: BoundingBox = (&line_string).try_into()?;
-        let segment = Segment {
-            way_id,
-            line_string,
-            bounding_box,
-        };
+        let coordinates =
+            get_coordinates(way, objs).ok_or("could not construct coordinates for way")?;
+        let geometry = SegmentGeometry::new(coordinates)?;
+        let segment = Segment { way_id, geometry };
         Ok(segment)
     }
-}
-
-impl TryFrom<&LineString<f64>> for BoundingBox {
-    type Error = &'static str;
-
-    fn try_from(line_string: &LineString<f64>) -> Result<Self, Self::Error> {
-        line_string
-            .bounding_rect()
-            .map(|rect| {
-                let sw = [rect.min().x, rect.min().y];
-                let ne = [rect.max().x, rect.max().y];
-                BoundingBox { sw, ne }
-            })
-            .ok_or("cannot get bounding box for the given set of coordinates")
-    }
-}
-
-#[derive(Clone, Debug)]
-struct BoundingBox {
-    sw: [f64; 2],
-    ne: [f64; 2],
 }
 
 impl RTreeObject for Segment {
     type Envelope = AABB<[f64; 2]>;
 
     fn envelope(&self) -> Self::Envelope {
-        AABB::from_corners(self.bounding_box.sw, self.bounding_box.ne)
-    }
-}
-
-trait Padding {
-    fn pad(&self) -> Self;
-}
-
-impl Padding for AABB<[f64; 2]> {
-    fn pad(&self) -> Self {
-        let sw: Point<f64> = self.lower().into();
-        let ne: Point<f64> = self.upper().into();
-        let padding: Point<f64> = (RTREE_PADDING, RTREE_PADDING).into();
-        let sw_padded = sw - padding;
-        let ne_padded = ne + padding;
-        AABB::from_corners(
-            [sw_padded.lng(), sw_padded.lat()],
-            [ne_padded.lng(), ne_padded.lat()],
-        )
+        let (sw, ne) = self.geometry.sw_ne();
+        AABB::from_corners(sw, ne)
     }
 }
 
@@ -424,14 +355,9 @@ mod get_streets {
     }
 
     fn create_segment(id: i64, coordinates: Vec<(f64, f64)>) -> Segment {
-        let line_string: LineString<f64> = coordinates.into();
-        let bounding_box: BoundingBox = (&line_string).try_into().unwrap();
         let way_id = WayId(id);
-        Segment {
-            way_id,
-            line_string,
-            bounding_box,
-        }
+        let geometry = SegmentGeometry::new(coordinates).unwrap();
+        Segment { way_id, geometry }
     }
 
     #[test]
