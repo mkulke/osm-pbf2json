@@ -486,7 +486,7 @@ checksum = "94af325bc33c7f60191be4e2c984d48aaa21e2854f473b85398344b60c9b6358"
 
 [[package]]
 name = "osm_pbf2json"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "approx",
  "criterion",

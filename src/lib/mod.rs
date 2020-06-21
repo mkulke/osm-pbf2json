@@ -153,7 +153,7 @@ fn build_street_group(name: Option<String>) -> Vec<Group> {
         .collect()
 }
 
-pub fn extract_roads(
+pub fn extract_streets(
     file: impl Seek + Read,
     writer: &mut dyn Write,
     geo_json: bool,
@@ -162,12 +162,12 @@ pub fn extract_roads(
     let mut pbf = OsmPbfReader::new(file);
     let groups = build_street_group(name);
     let objs = pbf.get_objs_and_deps(|obj| filter(obj, &groups))?;
-    let roads = get_streets(&objs);
+    let streets = get_streets(&objs);
     if geo_json {
-        let geojson = roads.to_geojson()?;
+        let geojson = streets.to_geojson()?;
         writeln!(writer, "{}", geojson)?;
     } else {
-        roads.write_json_lines(writer)?;
+        streets.write_json_lines(writer)?;
     }
     Ok(())
 }

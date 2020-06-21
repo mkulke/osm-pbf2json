@@ -1,4 +1,4 @@
-use lib::{extract_roads, filter, process};
+use lib::{extract_streets, filter, process};
 use std::error::Error;
 use std::fs::File;
 use std::io;
@@ -46,7 +46,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             name,
         } => {
             let file = File::open(shared_opts.path)?;
-            extract_roads(file, &mut handle, geojson, name)?;
+            extract_streets(file, &mut handle, geojson, name)?;
         }
     }
     Ok(())
