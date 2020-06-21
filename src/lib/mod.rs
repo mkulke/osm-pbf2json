@@ -1,5 +1,5 @@
 use self::geo::{get_compound_coordinates, get_geo_info, Bounds, Location};
-use filter::{filter, Group};
+use filter::{filter, Condition, Group};
 use osmpbfreader::objects::{Node, OsmId, OsmObj, Relation, Tags, Way};
 use osmpbfreader::OsmPbfReader;
 use serde::{Deserialize, Serialize};
@@ -7,9 +7,11 @@ use serde_json::to_string;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::io::{Read, Seek, Write};
+use streets::{get_streets, OutputExt};
 
 pub mod filter;
 mod geo;
+mod streets;
 
 #[derive(Serialize, Deserialize)]
 struct JSONNode {
@@ -122,6 +124,52 @@ impl SerializeNode for Node {
         };
         to_string(&jn)
     }
+}
+
+fn build_street_group(name: Option<String>) -> Vec<Group> {
+    use Condition::*;
+
+    let values = vec![
+        "primary",
+        "secondary",
+        "tertiary",
+        "residential",
+        "service",
+        "living_street",
+    ];
+
+    let name_condition = match name {
+        Some(name) => ValueMatch("name".to_string(), name),
+        None => TagPresence("name".to_string()),
+    };
+
+    values
+        .into_iter()
+        .map(|val| {
+            let highway_match = ValueMatch("highway".to_string(), val.to_string());
+            let conditions = vec![highway_match, name_condition.clone()];
+            Group { conditions }
+        })
+        .collect()
+}
+
+pub fn extract_streets(
+    file: impl Seek + Read,
+    writer: &mut dyn Write,
+    geo_json: bool,
+    name: Option<String>,
+) -> Result<(), Box<dyn Error>> {
+    let mut pbf = OsmPbfReader::new(file);
+    let groups = build_street_group(name);
+    let objs = pbf.get_objs_and_deps(|obj| filter(obj, &groups))?;
+    let streets = get_streets(&objs);
+    if geo_json {
+        let geojson = streets.to_geojson()?;
+        writeln!(writer, "{}", geojson)?;
+    } else {
+        streets.write_json_lines(writer)?;
+    }
+    Ok(())
 }
 
 pub fn process(

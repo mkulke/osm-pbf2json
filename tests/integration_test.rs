@@ -1,6 +1,6 @@
 extern crate osm_pbf2json;
 
-use osm_pbf2json::{filter, process};
+use osm_pbf2json::{extract_streets, filter, process};
 use std::fs::File;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 
@@ -39,4 +39,16 @@ fn find_bike_parking_for_six() {
     let string = get_string(&mut cursor);
     let lines: Vec<&str> = string.trim().split('\n').collect();
     assert_eq!(lines.len(), 14);
+}
+
+#[test]
+fn extract_rosa_luxemburg_street() {
+    let mut cursor = Cursor::new(Vec::new());
+    let name = "Rosa-Luxemburg-Straße".to_string();
+    let file = File::open("./tests/data/alexanderplatz.pbf").unwrap();
+    extract_streets(file, &mut cursor, false, Some(name)).unwrap();
+    let string = get_string(&mut cursor);
+    let lines: Vec<&str> = string.trim().split('\n').collect();
+    assert_eq!(lines.len(), 1);
+    assert!(lines[0].contains("Rosa-Luxemburg-Straße"));
 }
