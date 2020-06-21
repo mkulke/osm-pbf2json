@@ -282,6 +282,7 @@ impl RTreeObject for Segment {
 #[cfg(test)]
 mod get_streets {
     use super::*;
+    use approx::*;
     use osmpbfreader::objects::{Node, NodeId, Tags, Way, WayId};
     use std::collections::BTreeMap;
 
@@ -376,6 +377,17 @@ mod get_streets {
         let way_id = WayId(id);
         let geometry = SegmentGeometry::new(coordinates).unwrap();
         Segment { way_id, geometry }
+    }
+
+    #[test]
+    fn street_length() {
+        let seg_1 = create_segment(42, vec![(0., 1.), (0., 3.)]);
+        let seg_2 = create_segment(43, vec![(0., 3.), (1., 4.)]);
+        let segments = vec![seg_1, seg_2];
+        let name = "some name".to_string();
+        let street = Street { name, segments };
+        let length = street.length();
+        assert_relative_eq!(length, 2.0 + 2.0_f64.sqrt(), epsilon = f64::EPSILON);
     }
 
     #[test]

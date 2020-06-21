@@ -332,8 +332,8 @@ mod tests {
 
     fn approx_eq<T: Into<[f64; 2]>>(a: [f64; 2], o: Option<T>) {
         let b: [f64; 2] = o.unwrap().into();
-        relative_eq!(a[0], b[0], epsilon = f64::EPSILON);
-        relative_eq!(a[1], b[1], epsilon = f64::EPSILON);
+        assert_relative_eq!(a[0], b[0], epsilon = f64::EPSILON);
+        assert_relative_eq!(a[1], b[1], epsilon = f64::EPSILON);
     }
 
     #[test]
@@ -354,6 +354,22 @@ mod tests {
         //
         // 0
         approx_eq([9., 51.], coordinates.get_middle());
+    }
+
+    #[test]
+    fn midpoint() {
+        let coordinates = vec![(9., 50.), (9., 51.), (10., 51.)];
+        let geometry_1 = SegmentGeometry::new(coordinates).unwrap();
+        let coordinates = vec![(12., 51.), (12., 50.)];
+        let geometry_2 = SegmentGeometry::new(coordinates).unwrap();
+        // 1.1   1.2        2.0
+        //
+        //
+        // 1.0              2.1
+        let midpoint = vec![&geometry_1, &geometry_2]
+            .midpoint()
+            .map(|(lng, lat)| [lng, lat]);
+        approx_eq([10., 51.], midpoint);
     }
 
     #[test]
