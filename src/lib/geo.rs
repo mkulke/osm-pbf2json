@@ -98,13 +98,6 @@ impl SegmentGeometry {
         (self.bounding_box.sw, self.bounding_box.ne)
     }
 
-    pub fn diameter(&self) -> f64 {
-        let sw: Coordinate<f64> = self.bounding_box.sw.into();
-        let ne: Coordinate<f64> = self.bounding_box.ne.into();
-        let line = Line::new(sw, ne);
-        line.euclidean_length()
-    }
-
     pub fn padded_sw_ne(&self, distance: f64) -> ([f64; 2], [f64; 2]) {
         let BoundingBox { sw, ne } = self.bounding_box.pad(distance);
         (sw, ne)
