@@ -1,8 +1,10 @@
 use geo::prelude::*;
-use geo::{Closest, COORD_PRECISION};
-use geo_types::{Coordinate, Geometry, LineString, MultiPoint, Point, Polygon};
+use geo::Closest;
+use geo_types::{Coordinate, Geometry, Line, LineString, MultiPoint, Point, Polygon};
 use serde::{Deserialize, Serialize};
 use std::convert::{TryFrom, TryInto};
+
+const EQ_PRECISION: f64 = 1.0e-5;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Location {
@@ -35,9 +37,8 @@ impl PartialEq<Location> for Location {
     fn eq(&self, other: &Self) -> bool {
         let self_point = Point::new(self.lon, self.lat);
         let other_point = Point::new(other.lon, other.lat);
-        let distance = self_point.haversine_distance(&other_point);
-        // 5.0e-8 might be a good value
-        distance < COORD_PRECISION.into()
+        let distance = self_point.euclidean_distance(&other_point);
+        distance < EQ_PRECISION
     }
 }
 
@@ -97,9 +98,35 @@ impl SegmentGeometry {
         (self.bounding_box.sw, self.bounding_box.ne)
     }
 
+    pub fn diameter(&self) -> f64 {
+        let sw: Coordinate<f64> = self.bounding_box.sw.into();
+        let ne: Coordinate<f64> = self.bounding_box.ne.into();
+        let line = Line::new(sw, ne);
+        line.euclidean_length()
+    }
+
     pub fn padded_sw_ne(&self, distance: f64) -> ([f64; 2], [f64; 2]) {
         let BoundingBox { sw, ne } = self.bounding_box.pad(distance);
         (sw, ne)
+    }
+}
+
+pub trait Length {
+    fn length(&self) -> f64;
+}
+
+impl Length for SegmentGeometry {
+    fn length(&self) -> f64 {
+        let sw: Coordinate<f64> = self.bounding_box.sw.into();
+        let ne: Coordinate<f64> = self.bounding_box.ne.into();
+        let line = Line::new(sw, ne);
+        line.euclidean_length()
+    }
+}
+
+impl Length for Vec<&SegmentGeometry> {
+    fn length(&self) -> f64 {
+        self.iter().map(|segment| segment.length()).sum()
     }
 }
 

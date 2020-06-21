@@ -295,23 +295,34 @@ dependencies = [
 
 [[package]]
 name = "geo"
-version = "0.13.0"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6315f3b85322e42fc9967e0f080fff8294f65eddfc222f1a1dd694955b04df4d"
+checksum = "61d3eed372074e881b542287efa5f8766170b2f983a62e9f02bf70dd2bc72bbc"
 dependencies = [
  "geo-types",
+ "geographiclib-rs",
  "num-traits",
- "rstar 0.7.1",
+ "rstar",
 ]
 
 [[package]]
 name = "geo-types"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0ff051e4c51366601441053c37acf84958a795d350fdc02a53a31717f9bae2d"
+checksum = "407043938de169e80c31cef3c46c99faccd4d002ea8120c637f29a6958820c62"
 dependencies = [
+ "approx",
  "num-traits",
- "rstar 0.7.1",
+ "rstar",
+]
+
+[[package]]
+name = "geographiclib-rs"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b78e20d5d868fa2c4182a8170cb4df261e781a605810e3c1500269c1907da461"
+dependencies = [
+ "lazy_static",
 ]
 
 [[package]]
@@ -485,7 +496,7 @@ dependencies = [
  "osmpbfreader",
  "petgraph",
  "rand",
- "rstar 0.8.0",
+ "rstar",
  "serde",
  "serde_json",
  "structopt",
@@ -738,16 +749,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "rstar"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0650eaaa56cbd1726fd671150fce8ac6ed9d9a25d1624430d7ee9d196052f6b6"
-dependencies = [
- "num-traits",
- "pdqselect",
 ]
 
 [[package]]

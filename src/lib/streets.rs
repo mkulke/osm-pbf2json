@@ -1,4 +1,4 @@
-use super::geo::{Midpoint, SegmentGeometry};
+use super::geo::{Length, Midpoint, SegmentGeometry};
 use itertools::Itertools;
 use osmpbfreader::objects::{OsmId, OsmObj, Way, WayId};
 use petgraph::algo::kosaraju_scc;
@@ -19,6 +19,7 @@ const RTREE_PADDING: f64 = 0.001;
 struct JSONStreet {
     id: i64,
     name: String,
+    length: f64,
     loc: (f64, f64),
 }
 
@@ -51,7 +52,13 @@ impl OutputExt for Vec<Street> {
             let id = street.id();
             let loc = street.middle().ok_or("could not calculate middle")?;
             let name = street.name.clone();
-            let json_street = JSONStreet { id, name, loc };
+            let length = street.length();
+            let json_street = JSONStreet {
+                id,
+                name,
+                length,
+                loc,
+            };
             let json = to_string(&json_street)?;
             writeln!(writer, "{}", json)?;
         }
@@ -93,6 +100,17 @@ impl OutputExt for Vec<Street> {
         let feature_collection = Entity::FeatureCollection { features };
         let string = to_string(&feature_collection)?;
         Ok(string)
+    }
+}
+
+impl Length for Street {
+    fn length(&self) -> f64 {
+        let geometries: Vec<&SegmentGeometry> = self
+            .segments
+            .iter()
+            .map(|segment| &segment.geometry)
+            .collect();
+        geometries.length()
     }
 }
 
