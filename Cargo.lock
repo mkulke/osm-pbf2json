@@ -496,6 +496,7 @@ dependencies = [
  "osmpbfreader",
  "petgraph",
  "rand",
+ "rayon",
  "rstar",
  "serde",
  "serde_json",

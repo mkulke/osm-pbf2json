@@ -4,6 +4,7 @@ use osmpbfreader::objects::{OsmId, OsmObj, Way, WayId};
 use petgraph::algo::kosaraju_scc;
 use petgraph::graph::UnGraph;
 use rand::random;
+use rayon::prelude::*;
 use rstar::RTree;
 use rstar::{RTreeObject, AABB};
 use serde::{Deserialize, Serialize};
@@ -207,7 +208,7 @@ fn get_name_groups(objs: &BTreeMap<OsmId, OsmObj>) -> HashMap<&String, Vec<&Way>
 
 pub fn get_streets(objs: &BTreeMap<OsmId, OsmObj>) -> Vec<Street> {
     get_name_groups(objs)
-        .into_iter()
+        .into_par_iter()
         .flat_map(|(name, ways)| {
             let segments = get_segments(&ways, objs);
             let clusters = get_clusters(segments);
