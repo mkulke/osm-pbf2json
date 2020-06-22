@@ -136,6 +136,7 @@ fn build_street_group(name: Option<String>) -> Vec<Group> {
         "residential",
         "service",
         "living_street",
+        "pedestrian",
     ];
 
     let name_condition = match name {
