@@ -1,4 +1,4 @@
-use lib::{extract_streets, filter, process};
+use lib::{extract_hierarchies, extract_streets, filter, process};
 use std::error::Error;
 use std::fs::File;
 use std::io;
@@ -28,6 +28,12 @@ enum Cli {
         #[structopt(short, long)]
         name: Option<String>,
     },
+    AdminBoundaries {
+        #[structopt(flatten)]
+        shared_opts: SharedOpts,
+        #[structopt(short, long)]
+        levels: Vec<u8>,
+    },
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -47,6 +53,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         } => {
             let file = File::open(shared_opts.path)?;
             extract_streets(file, &mut handle, geojson, name)?;
+        }
+        Cli::AdminBoundaries {
+            shared_opts,
+            levels,
+        } => {
+            let file = File::open(shared_opts.path)?;
+            extract_hierarchies(file, &mut handle, levels)?;
         }
     }
     Ok(())

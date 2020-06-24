@@ -470,9 +470,9 @@ dependencies = [
 
 [[package]]
 name = "num_cpus"
-version = "1.12.0"
+version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46203554f085ff89c235cd12f7075f3233af9b11ed7c9e16dfe2560d03313ce6"
+checksum = "05499f3756671c15885fee9034446956fff3f243d6077b91e5767df161f766b3"
 dependencies = [
  "hermit-abi",
  "libc",
@@ -485,6 +485,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94af325bc33c7f60191be4e2c984d48aaa21e2854f473b85398344b60c9b6358"
 
 [[package]]
+name = "osm_boundaries_utils"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07dcd9a020f059e9f3c671091e80a6205a9ef24c89468887a7b26b6805f48c3e"
+dependencies = [
+ "geo",
+ "geo-types",
+ "log",
+ "osmpbfreader",
+]
+
+[[package]]
 name = "osm_pbf2json"
 version = "0.2.0"
 dependencies = [
@@ -493,6 +505,7 @@ dependencies = [
  "geo",
  "geo-types",
  "itertools",
+ "osm_boundaries_utils",
  "osmpbfreader",
  "petgraph",
  "rand",

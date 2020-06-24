@@ -1,4 +1,5 @@
 use self::geo::{get_compound_coordinates, get_geo_info, Bounds, Location};
+use admin::get_admin_hierarchies;
 use filter::{filter, Condition, Group};
 use osmpbfreader::objects::{Node, OsmId, OsmObj, Relation, Tags, Way};
 use osmpbfreader::OsmPbfReader;
@@ -9,6 +10,7 @@ use std::error::Error;
 use std::io::{Read, Seek, Write};
 use streets::{get_streets, OutputExt};
 
+mod admin;
 pub mod filter;
 mod geo;
 mod streets;
@@ -126,6 +128,19 @@ impl SerializeNode for Node {
     }
 }
 
+fn build_admin_group(levels: Vec<u8>) -> Vec<Group> {
+    use Condition::*;
+
+    levels
+        .iter()
+        .map(|level| {
+            let level_match = ValueMatch("admin_level".to_string(), level.to_string());
+            let conditions = vec![level_match];
+            Group { conditions }
+        })
+        .collect()
+}
+
 fn build_street_group(name: Option<String>) -> Vec<Group> {
     use Condition::*;
 
@@ -143,7 +158,6 @@ fn build_street_group(name: Option<String>) -> Vec<Group> {
         Some(name) => ValueMatch("name".to_string(), name),
         None => TagPresence("name".to_string()),
     };
-
     values
         .into_iter()
         .map(|val| {
@@ -152,6 +166,18 @@ fn build_street_group(name: Option<String>) -> Vec<Group> {
             Group { conditions }
         })
         .collect()
+}
+
+pub fn extract_hierarchies(
+    file: impl Seek + Read,
+    _writer: &mut dyn Write,
+    levels: Vec<u8>,
+) -> Result<(), Box<dyn Error>> {
+    let mut pbf = OsmPbfReader::new(file);
+    let groups = build_admin_group(levels);
+    let objs = pbf.get_objs_and_deps(|obj| filter(obj, &groups))?;
+    let _hierarchies = get_admin_hierarchies(&objs);
+    Ok(())
 }
 
 pub fn extract_streets(
