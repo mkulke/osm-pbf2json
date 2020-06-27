@@ -1,4 +1,5 @@
 use super::geo::{Length, Midpoint, SegmentGeometry};
+use super::geojson::{Entity, Geometry};
 use itertools::Itertools;
 use osmpbfreader::objects::{OsmId, OsmObj, Way, WayId};
 use petgraph::algo::kosaraju_scc;
@@ -24,30 +25,12 @@ struct JSONStreet {
     loc: (f64, f64),
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(tag = "type")]
-enum Geometry {
-    MultiLineString { coordinates: Vec<Vec<(f64, f64)>> },
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(tag = "type")]
-enum Entity {
-    Feature {
-        properties: HashMap<String, String>,
-        geometry: Geometry,
-    },
-    FeatureCollection {
-        features: Vec<Entity>,
-    },
-}
-
-pub trait OutputExt {
+pub trait StreetOutput {
     fn to_geojson(&self) -> Result<String, Box<dyn Error>>;
     fn write_json_lines(self, writer: &mut dyn Write) -> Result<(), Box<dyn Error>>;
 }
 
-impl OutputExt for Vec<Street> {
+impl StreetOutput for Vec<Street> {
     fn write_json_lines(self, writer: &mut dyn Write) -> Result<(), Box<dyn Error>> {
         for street in self.iter() {
             let id = street.id();

@@ -1,5 +1,5 @@
 use self::geo::{get_compound_coordinates, get_geo_info, Bounds, Location};
-use admin::get_admin_hierarchies;
+use admin::{get_admin_hierarchies, AdminOutput};
 use filter::{filter, Condition, Group};
 use osmpbfreader::objects::{Node, OsmId, OsmObj, Relation, Tags, Way};
 use osmpbfreader::OsmPbfReader;
@@ -8,11 +8,12 @@ use serde_json::to_string;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::io::{Read, Seek, Write};
-use streets::{get_streets, OutputExt};
+use streets::{get_streets, StreetOutput};
 
 mod admin;
 pub mod filter;
 mod geo;
+mod geojson;
 mod streets;
 
 #[derive(Serialize, Deserialize)]
@@ -170,13 +171,21 @@ fn build_street_group(name: Option<String>) -> Vec<Group> {
 
 pub fn extract_hierarchies(
     file: impl Seek + Read,
-    _writer: &mut dyn Write,
-    levels: Vec<u8>,
+    writer: &mut dyn Write,
+    geo_json: bool,
+    levels: Option<Vec<u8>>,
 ) -> Result<(), Box<dyn Error>> {
     let mut pbf = OsmPbfReader::new(file);
+    let levels = levels.unwrap_or(vec![4, 6, 8, 9, 10]);
     let groups = build_admin_group(levels);
     let objs = pbf.get_objs_and_deps(|obj| filter(obj, &groups))?;
-    let _hierarchies = get_admin_hierarchies(&objs);
+    let boundaries = get_admin_hierarchies(&objs);
+    if geo_json {
+        let geojson = boundaries.to_geojson()?;
+        writeln!(writer, "{}", geojson)?;
+    } else {
+        boundaries.write_json_lines(writer)?;
+    }
     Ok(())
 }
 

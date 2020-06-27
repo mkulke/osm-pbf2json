@@ -28,11 +28,13 @@ enum Cli {
         #[structopt(short, long)]
         name: Option<String>,
     },
-    AdminBoundaries {
+    Boundaries {
         #[structopt(flatten)]
         shared_opts: SharedOpts,
         #[structopt(short, long)]
-        levels: Vec<u8>,
+        geojson: bool,
+        #[structopt(short, long)]
+        levels: Option<Vec<u8>>,
     },
 }
 
@@ -54,12 +56,13 @@ fn main() -> Result<(), Box<dyn Error>> {
             let file = File::open(shared_opts.path)?;
             extract_streets(file, &mut handle, geojson, name)?;
         }
-        Cli::AdminBoundaries {
+        Cli::Boundaries {
             shared_opts,
+            geojson,
             levels,
         } => {
             let file = File::open(shared_opts.path)?;
-            extract_hierarchies(file, &mut handle, levels)?;
+            extract_hierarchies(file, &mut handle, geojson, levels)?;
         }
     }
     Ok(())
