@@ -59,6 +59,29 @@ Streets are represented in OSM as a collection of smaller road segments. To grou
 {"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"Gontardstraße","stroke":"#7DA86A"},"geometry":{"type":"MultiLineString","coordinates":[[[13.410188699999999,52.521660999999995],[13.4108953,52.521203799999995],[13.410997,52.521133199999994],[13.4114945,52.5208095],[13.4119613,52.520479099999996]],[[13.410188699999999,52.521660999999995],[13.410212399999999,52.521679899999995],[13.4102321,52.5216956],[13.4102623,52.5217192],[13.4102997,52.5217484]],[[13.4095035,52.522308699999996],[13.4095806,52.5222255],[13.4096047,52.5221899],[13.4098305,52.5220348],[13.4102997,52.5217484]]]}}]}
 ```
 
+### Extract Administrative Boundaries
+
+Admin Boundaries are stored as OSM Relations (e.g. Country, State) with complex and disconnected geometry, if required. The levels of a boundary are specific per country, a list can be found [here](https://wiki.openstreetmap.org/wiki/Tag:boundary%3Dadministrative#10_admin_level_values_for_specific_countries). Several boundary levels can be specified and extracted in a single run. By default levels 4, 6, 8, 9 & 10 are considered. GeoJSON output is available for this option.
+
+```
+./target/release/osm_pbf2json boundaries berlin.pbf -l 9
+{"name":"Reinickendorf","admin_level":9,"bbox":{"sw":[13.201617599999999,52.5488072],"ne":[13.3892817,52.660741099999996]}}
+{"name":"Spandau","admin_level":9,"bbox":{"sw":[13.109295,52.439614999999996],"ne":[13.2824665,52.598796899999996]}}
+{"name":"Mitte","admin_level":9,"bbox":{"sw":[13.3015376,52.4987357],"ne":[13.4294017,52.5676686]}}
+{"name":"Steglitz-Zehlendorf","admin_level":9,"bbox":{"sw":[13.088344999999999,52.3872254],"ne":[13.3716004,52.4718369]}}
+{"name":"Treptow-Köpenick","admin_level":9,"bbox":{"sw":[13.4396363,52.3382448],"ne":[13.7611609,52.497706799999996]}}
+{"name":"Friedrichshain-Kreuzberg","admin_level":9,"bbox":{"sw":[13.368229099999999,52.4827923],"ne":[13.4914434,52.5310256]}}
+{"name":"Gosen","admin_level":9,"bbox":{"sw":[13.6861251,52.377441399999995],"ne":[13.7228219,52.399721299999996]}}
+{"name":"Tempelhof-Schöneberg","admin_level":9,"bbox":{"sw":[13.3199923,52.376138399999995],"ne":[13.42746,52.5049424]}}
+{"name":"Neukölln","admin_level":9,"bbox":{"sw":[13.3994933,52.395945399999995],"ne":[13.5241327,52.495864999999995]}}
+{"name":"Marzahn-Hellersdorf","admin_level":9,"bbox":{"sw":[13.5168837,52.4704779],"ne":[13.658503399999999,52.574508599999994]}}
+{"name":"Pankow","admin_level":9,"bbox":{"sw":[13.3475571,52.519927599999995],"ne":[13.523022,52.675508699999995]}}
+{"name":"Charlottenburg-Wilmersdorf","admin_level":9,"bbox":{"sw":[13.1865954,52.4664729],"ne":[13.3414287,52.5494336]}}
+{"name":"Lichtenberg","admin_level":9,"bbox":{"sw":[13.456196499999999,52.4678355],"ne":[13.5677059,52.5964629]}}
+{"name":"Lindenberg","admin_level":9,"bbox":{"sw":[13.4966616,52.586616899999996],"ne":[13.566374999999999,52.620224099999994]}}
+{"name":"Schönerlinde","admin_level":9,"bbox":{"sw":[13.3979077,52.6354682],"ne":[13.4742692,52.6734271]}}
+```
+
 ## Test
 
 ```
