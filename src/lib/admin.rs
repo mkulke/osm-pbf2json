@@ -36,6 +36,29 @@ struct JSONBoundary {
     bbox: JSONBBox,
 }
 
+impl AdminBoundary {
+    fn geometry(&self) -> Geometry {
+        let coordinates = self
+            .geometry
+            .clone()
+            .into_iter()
+            .map(|polygon| {
+                let (exterior, interiours) = polygon.into_inner();
+                let mut rings = vec![exterior];
+                rings.extend(interiours);
+                rings
+            })
+            .map(|line_strings| {
+                line_strings
+                    .iter()
+                    .map(|ls| ls.points_iter().map(|p| (p.x(), p.y())).collect())
+                    .collect()
+            })
+            .collect();
+        Geometry::MultiPolygon { coordinates }
+    }
+}
+
 impl AdminOutput for Vec<AdminBoundary> {
     fn write_json_lines(self, writer: &mut dyn Write) -> Result<(), Box<dyn Error>> {
         for boundary in self.iter() {
@@ -60,24 +83,7 @@ impl AdminOutput for Vec<AdminBoundary> {
         let features = self
             .iter()
             .map(|boundary| {
-                let coordinates = boundary
-                    .geometry
-                    .clone()
-                    .into_iter()
-                    .map(|polygon| {
-                        let (exterior, interiours) = polygon.into_inner();
-                        let mut rings = vec![exterior];
-                        rings.extend(interiours);
-                        rings
-                    })
-                    .map(|line_strings| {
-                        line_strings
-                            .iter()
-                            .map(|ls| ls.points_iter().map(|p| (p.x(), p.y())).collect())
-                            .collect()
-                    })
-                    .collect();
-                let geometry = Geometry::MultiPolygon { coordinates };
+                let geometry = boundary.geometry();
                 let properties = vec![
                     ("name".to_string(), boundary.name.clone()),
                     ("admin_level".to_string(), boundary.admin_level.to_string()),
@@ -153,6 +159,40 @@ mod get_boundaries {
     }
 
     #[test]
+    fn geometry() {
+        let mut builder = OsmBuilder::new();
+        let rel_id = builder
+            .relation()
+            .outer(vec![
+                named_node(3.4, 5.2, "start"),
+                named_node(5.4, 5.1, "1"),
+                named_node(2.4, 3.1, "2"),
+                named_node(3.4, 5.2, "start"),
+            ])
+            .relation_id
+            .into();
+
+        let obj = builder.objects.get_mut(&rel_id).unwrap();
+        let rel = obj.relation_mut().unwrap();
+        rel.tags
+            .insert("boundary".to_string(), "administrative".to_string());
+        rel.tags.insert("name".to_string(), "some_name".to_string());
+        rel.tags.insert("admin_level".to_string(), 11.to_string());
+
+        let boundary = get_boundaries(&builder.objects).pop().unwrap();
+        let geometry = boundary.geometry();
+        match geometry {
+            Geometry::MultiPolygon { coordinates } => {
+                assert_eq!(coordinates.len(), 1);
+                assert_eq!(coordinates[0].len(), 1);
+                assert_eq!(coordinates[0][0].len(), 4);
+            }
+            _ => assert!(false),
+        }
+        // assert_eq!(boundaries.len(), 1);
+    }
+
+    #[test]
     fn boundary_with_multiple_nodes() {
         let mut builder = OsmBuilder::new();
         let rel_id = builder
@@ -193,6 +233,7 @@ mod get_boundaries {
 
         let obj = builder.objects.get_mut(&rel_id).unwrap();
         let rel = obj.relation_mut().unwrap();
+        rel.tags.insert("boundary".to_string(), "wrong".to_string());
         rel.tags.insert("name".to_string(), "some_name".to_string());
         rel.tags.insert("admin_level".to_string(), 11.to_string());
 
