@@ -1,5 +1,5 @@
 use self::geo::{get_compound_coordinates, get_geo_info, Bounds, Location};
-use admin::{get_admin_hierarchies, AdminOutput};
+use admin::{get_boundaries, AdminOutput};
 use filter::{filter, Condition, Group};
 use osmpbfreader::objects::{Node, OsmId, OsmObj, Relation, Tags, Way};
 use osmpbfreader::OsmPbfReader;
@@ -136,7 +136,8 @@ fn build_admin_group(levels: Vec<u8>) -> Vec<Group> {
         .iter()
         .map(|level| {
             let level_match = ValueMatch("admin_level".to_string(), level.to_string());
-            let conditions = vec![level_match];
+            let boundary_match = ValueMatch("boundary".to_string(), "administrative".to_string());
+            let conditions = vec![boundary_match, level_match];
             Group { conditions }
         })
         .collect()
@@ -179,7 +180,7 @@ pub fn extract_hierarchies(
     let levels = levels.unwrap_or(vec![4, 6, 8, 9, 10]);
     let groups = build_admin_group(levels);
     let objs = pbf.get_objs_and_deps(|obj| filter(obj, &groups))?;
-    let boundaries = get_admin_hierarchies(&objs);
+    let boundaries = get_boundaries(&objs);
     if geo_json {
         let geojson = boundaries.to_geojson()?;
         writeln!(writer, "{}", geojson)?;

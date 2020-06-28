@@ -106,10 +106,14 @@ impl RTreeObject for AdminBoundary {
     }
 }
 
-pub fn get_admin_hierarchies(objs: &BTreeMap<OsmId, OsmObj>) -> Vec<AdminBoundary> {
+pub fn get_boundaries(objs: &BTreeMap<OsmId, OsmObj>) -> Vec<AdminBoundary> {
     objs.values()
         .filter_map(|obj| {
             let relation = obj.relation()?;
+            let boundary = relation.tags.get("boundary")?;
+            if boundary != "administrative" {
+                return None;
+            }
             let name = relation.tags.get("name")?.clone();
             let admin_level = relation.tags.get("admin_level")?.parse().ok()?;
             let geometry = build_boundary(relation, objs)?;
@@ -126,4 +130,73 @@ pub fn get_admin_hierarchies(objs: &BTreeMap<OsmId, OsmObj>) -> Vec<AdminBoundar
             Some(boundary)
         })
         .collect()
+}
+
+#[cfg(test)]
+mod get_boundaries {
+    use super::*;
+    use osm_boundaries_utils::osm_builder::{named_node, OsmBuilder};
+    use osmpbfreader::objects::{OsmObj, Relation};
+
+    trait OsmObjExt {
+        fn relation_mut(&mut self) -> Option<&mut Relation>;
+    }
+
+    impl OsmObjExt for OsmObj {
+        fn relation_mut(&mut self) -> Option<&mut Relation> {
+            if let &mut OsmObj::Relation(ref mut rel) = self {
+                Some(rel)
+            } else {
+                None
+            }
+        }
+    }
+
+    #[test]
+    fn boundary_with_multiple_nodes() {
+        let mut builder = OsmBuilder::new();
+        let rel_id = builder
+            .relation()
+            .outer(vec![
+                named_node(3.4, 5.2, "start"),
+                named_node(5.4, 5.1, "1"),
+                named_node(2.4, 3.1, "2"),
+                named_node(3.4, 5.2, "start"),
+            ])
+            .relation_id
+            .into();
+
+        let obj = builder.objects.get_mut(&rel_id).unwrap();
+        let rel = obj.relation_mut().unwrap();
+        rel.tags
+            .insert("boundary".to_string(), "administrative".to_string());
+        rel.tags.insert("name".to_string(), "some_name".to_string());
+        rel.tags.insert("admin_level".to_string(), 11.to_string());
+
+        let boundaries = get_boundaries(&builder.objects);
+        assert_eq!(boundaries.len(), 1);
+    }
+
+    #[test]
+    fn relation_with_missing_tags() {
+        let mut builder = OsmBuilder::new();
+        let rel_id = builder
+            .relation()
+            .outer(vec![
+                named_node(3.4, 5.2, "start"),
+                named_node(5.4, 5.1, "1"),
+                named_node(2.4, 3.1, "2"),
+                named_node(3.4, 5.2, "start"),
+            ])
+            .relation_id
+            .into();
+
+        let obj = builder.objects.get_mut(&rel_id).unwrap();
+        let rel = obj.relation_mut().unwrap();
+        rel.tags.insert("name".to_string(), "some_name".to_string());
+        rel.tags.insert("admin_level".to_string(), 11.to_string());
+
+        let boundaries = get_boundaries(&builder.objects);
+        assert_eq!(boundaries.len(), 0);
+    }
 }
