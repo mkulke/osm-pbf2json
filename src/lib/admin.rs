@@ -187,7 +187,7 @@ mod get_boundaries {
                 assert_eq!(coordinates[0].len(), 1);
                 assert_eq!(coordinates[0][0].len(), 4);
             }
-            _ => assert!(false),
+            _ => unreachable!(),
         }
         // assert_eq!(boundaries.len(), 1);
     }
