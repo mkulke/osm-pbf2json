@@ -177,7 +177,8 @@ pub fn extract_hierarchies(
     levels: Option<Vec<u8>>,
 ) -> Result<(), Box<dyn Error>> {
     let mut pbf = OsmPbfReader::new(file);
-    let levels = levels.unwrap_or(vec![4, 6, 8, 9, 10]);
+    let default_levels = vec![4, 6, 8, 9, 10];
+    let levels = levels.unwrap_or(default_levels);
     let groups = build_admin_group(levels);
     let objs = pbf.get_objs_and_deps(|obj| filter(obj, &groups))?;
     let boundaries = get_boundaries(&objs);

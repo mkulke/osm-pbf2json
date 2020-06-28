@@ -144,7 +144,7 @@ mod get_boundaries {
 
     impl OsmObjExt for OsmObj {
         fn relation_mut(&mut self) -> Option<&mut Relation> {
-            if let &mut OsmObj::Relation(ref mut rel) = self {
+            if let OsmObj::Relation(ref mut rel) = *self {
                 Some(rel)
             } else {
                 None
