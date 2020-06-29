@@ -1,4 +1,4 @@
-use super::admin::AdminBoundary;
+// use super::admin::AdminBoundary;
 use super::geo::{Length, Midpoint, SegmentGeometry};
 use super::geojson::{Entity, Geometry};
 use itertools::Itertools;
@@ -118,11 +118,11 @@ impl Street {
         geometries.midpoint()
     }
 
-    fn boundary_matches<'a>(&self, tree: &'a RTree<AdminBoundary>) -> Vec<&'a AdminBoundary> {
-        let points: Vec<[f64; 2]> = self.into();
-        let aabb = AABB::from_points(&points);
-        tree.locate_in_envelope_intersecting(&aabb).collect()
-    }
+    // fn boundary_matches<'a>(&self, tree: &'a RTree<AdminBoundary>) -> Vec<&'a AdminBoundary> {
+    //     let points: Vec<[f64; 2]> = self.into();
+    //     let aabb = AABB::from_points(&points);
+    //     tree.locate_in_envelope_intersecting(&aabb).collect()
+    // }
 }
 
 fn get_coordinates(way: &Way, objs: &BTreeMap<OsmId, OsmObj>) -> Option<Vec<(f64, f64)>> {

@@ -110,7 +110,7 @@ pub fn get_boundaries(objs: &BTreeMap<OsmId, OsmObj>) -> Vec<AdminBoundary> {
 mod get_boundaries {
     use super::*;
     use osm_boundaries_utils::osm_builder::{named_node, OsmBuilder};
-    use osmpbfreader::objects::{OsmObj, Relation};
+    use osmpbfreader::objects::{NodeId, OsmObj, Relation, RelationId, WayId};
     use rstar::RTree;
 
     trait OsmObjExt {
@@ -127,16 +127,16 @@ mod get_boundaries {
         }
     }
 
-    fn create_objects(tags: Vec<(&str, &str)>) -> BTreeMap<OsmId, OsmObj> {
+    fn create_objects(tags: &Vec<(&str, &str)>, offset: f64) -> BTreeMap<OsmId, OsmObj> {
         let mut builder = OsmBuilder::new();
         let rel_id = builder
             .relation()
             .outer(vec![
-                named_node(13., 53., "start"),
-                named_node(13., 52., "1"),
-                named_node(14., 52., "2"),
-                named_node(14., 53., "3"),
-                named_node(13., 53., "start"),
+                named_node(offset, 53., "start"),
+                named_node(offset, 52., "1"),
+                named_node(offset + 1., 52., "2"),
+                named_node(offset + 1., 53., "3"),
+                named_node(offset, 53., "start"),
             ])
             .relation_id
             .into();
@@ -148,6 +148,43 @@ mod get_boundaries {
         builder.objects
     }
 
+    fn bump_ids(objs: BTreeMap<OsmId, OsmObj>) -> BTreeMap<OsmId, OsmObj> {
+        objs.into_iter()
+            .map(|(key, value)| {
+                let id = key.inner_id() + 1000;
+                match value {
+                    OsmObj::Node(node) => {
+                        let node_id = NodeId(id);
+                        let mut node = node.clone();
+                        node.id = node_id;
+                        (OsmId::Node(node_id), OsmObj::Node(node))
+                    }
+                    OsmObj::Way(way) => {
+                        let way_id = WayId(id);
+                        let mut way = way.clone();
+                        way.id = way_id;
+                        let node_ids = way
+                            .nodes
+                            .iter()
+                            .map(|node_id| NodeId(node_id.0 + 1000))
+                            .collect();
+                        way.nodes = node_ids;
+                        (OsmId::Way(way_id), OsmObj::Way(way))
+                    }
+                    OsmObj::Relation(relation) => {
+                        let relation_id = RelationId(id);
+                        let mut relation = relation.clone();
+                        for a_ref in relation.refs.iter_mut() {
+                            let ref_id = a_ref.member.inner_id() + 1000;
+                            a_ref.member = OsmId::Way(WayId(ref_id));
+                        }
+                        (OsmId::Relation(relation_id), OsmObj::Relation(relation))
+                    }
+                }
+            })
+            .collect()
+    }
+
     #[test]
     fn geometry() {
         let tags = vec![
@@ -155,7 +192,7 @@ mod get_boundaries {
             ("name", "some_name"),
             ("admin_level", "11"),
         ];
-        let objects = create_objects(tags);
+        let objects = create_objects(&tags, 13.);
 
         let boundary = get_boundaries(&objects).pop().unwrap();
         let coordinates = boundary.geometry.coordinates();
@@ -171,7 +208,7 @@ mod get_boundaries {
             ("name", "some_name"),
             ("admin_level", "11"),
         ];
-        let objects = create_objects(tags);
+        let objects = create_objects(&tags, 13.);
         let boundaries = get_boundaries(&objects);
         assert_eq!(boundaries.len(), 1);
     }
@@ -183,31 +220,75 @@ mod get_boundaries {
             ("name", "some_name"),
             ("admin_level", "11"),
         ];
-        let objects = create_objects(tags);
+        let objects = create_objects(&tags, 13.);
         let boundaries = get_boundaries(&objects);
         assert_eq!(boundaries.len(), 0);
     }
 
     #[test]
-    fn locate_line_string_in_boundary() {
+    fn locate_line_string_contained_in_boundary() {
         let tags = vec![
             ("boundary", "administrative"),
             ("name", "some_name"),
             ("admin_level", "11"),
         ];
-        let objects = create_objects(tags);
+        let objects = create_objects(&tags, 13.);
         let boundaries = get_boundaries(&objects);
         let tree = RTree::<AdminBoundary>::bulk_load(boundaries);
         let aabb = AABB::from_points(&vec![[13.25, 52.5], [13.74, 52.5]]);
         let matches = tree.locate_in_envelope_intersecting(&aabb);
         assert_eq!(matches.count(), 1);
+    }
 
-        let aabb = AABB::from_points(&vec![[12.75, 4.5], [13.25, 4.5]]);
+    #[test]
+    fn locate_line_string_intersecting_boundary() {
+        let tags = vec![
+            ("boundary", "administrative"),
+            ("name", "some_name"),
+            ("admin_level", "11"),
+        ];
+        let objects = create_objects(&tags, 13.);
+        let boundaries = get_boundaries(&objects);
+        let tree = RTree::<AdminBoundary>::bulk_load(boundaries);
+        let aabb = AABB::from_points(&vec![[12.75, 52.5], [13.25, 52.5]]);
+        let matches = tree.locate_in_envelope_intersecting(&aabb);
+        assert_eq!(matches.count(), 1);
+    }
+
+    #[test]
+    fn locate_line_string_out_of_boundary() {
+        let tags = vec![
+            ("boundary", "administrative"),
+            ("name", "some_name"),
+            ("admin_level", "11"),
+        ];
+        let objects = create_objects(&tags, 13.);
+        let boundaries = get_boundaries(&objects);
+        let tree = RTree::<AdminBoundary>::bulk_load(boundaries);
+        let aabb = AABB::from_points(&vec![[12.25, 52.5], [12.75, 52.5]]);
         let matches = tree.locate_in_envelope_intersecting(&aabb);
         assert_eq!(matches.count(), 0);
+    }
 
-        let aabb = AABB::from_points(&vec![[12.25, 4.5], [12.75, 4.5]]);
+    #[test]
+    fn locate_line_string_intersecting_two_boundaries() {
+        let tags = vec![
+            ("boundary", "administrative"),
+            ("name", "some_name"),
+            ("admin_level", "11"),
+        ];
+        let mut objects_1 = create_objects(&tags, 13.);
+        let objects_2 = bump_ids(create_objects(&tags, 12.));
+        objects_1.extend(objects_2);
+        let boundaries = get_boundaries(&objects_1);
+        assert_eq!(boundaries.len(), 2);
+        let tree = RTree::<AdminBoundary>::bulk_load(boundaries);
+        let aabb = AABB::from_points(&vec![[13.25, 52.5], [13.75, 52.5]]);
         let matches = tree.locate_in_envelope_intersecting(&aabb);
-        assert_eq!(matches.count(), 0);
+        assert_eq!(matches.count(), 1);
+
+        let aabb = AABB::from_points(&vec![[12.5, 52.5], [13.5, 52.5]]);
+        let matches = tree.locate_in_envelope_intersecting(&aabb);
+        assert_eq!(matches.count(), 2);
     }
 }
