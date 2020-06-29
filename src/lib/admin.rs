@@ -1,6 +1,5 @@
+use super::geo::BoundaryGeometry;
 use super::geojson::{Entity, Geometry};
-use geo::algorithm::bounding_rect::BoundingRect;
-use geo_types::MultiPolygon;
 use osm_boundaries_utils::build_boundary;
 use osmpbfreader::objects::{OsmId, OsmObj};
 use rstar::{RTreeObject, AABB};
@@ -18,15 +17,13 @@ pub trait AdminOutput {
 pub struct AdminBoundary {
     name: String,
     admin_level: u8,
-    geometry: MultiPolygon<f64>,
-    sw: (f64, f64),
-    ne: (f64, f64),
+    geometry: BoundaryGeometry,
 }
 
 #[derive(Serialize, Deserialize)]
 struct JSONBBox {
-    sw: (f64, f64),
-    ne: (f64, f64),
+    sw: [f64; 2],
+    ne: [f64; 2],
 }
 
 #[derive(Serialize, Deserialize)]
@@ -36,26 +33,12 @@ struct JSONBoundary {
     bbox: JSONBBox,
 }
 
-impl AdminBoundary {
-    fn geometry(&self) -> Geometry {
-        let coordinates = self
-            .geometry
-            .clone()
-            .into_iter()
-            .map(|polygon| {
-                let (exterior, interiours) = polygon.into_inner();
-                let mut rings = vec![exterior];
-                rings.extend(interiours);
-                rings
-            })
-            .map(|line_strings| {
-                line_strings
-                    .iter()
-                    .map(|ls| ls.points_iter().map(|p| (p.x(), p.y())).collect())
-                    .collect()
-            })
-            .collect();
-        Geometry::MultiPolygon { coordinates }
+impl RTreeObject for AdminBoundary {
+    type Envelope = AABB<[f64; 2]>;
+
+    fn envelope(&self) -> Self::Envelope {
+        let (sw, ne) = self.geometry.sw_ne();
+        AABB::from_corners(sw, ne)
     }
 }
 
@@ -64,10 +47,8 @@ impl AdminOutput for Vec<AdminBoundary> {
         for boundary in self.iter() {
             let name = boundary.name.clone();
             let admin_level = boundary.admin_level;
-            let bbox = JSONBBox {
-                sw: boundary.sw,
-                ne: boundary.ne,
-            };
+            let (sw, ne) = boundary.geometry.sw_ne();
+            let bbox = JSONBBox { sw, ne };
             let json_boundary = JSONBoundary {
                 name,
                 admin_level,
@@ -83,7 +64,8 @@ impl AdminOutput for Vec<AdminBoundary> {
         let features = self
             .iter()
             .map(|boundary| {
-                let geometry = boundary.geometry();
+                let coordinates = boundary.geometry.coordinates();
+                let geometry = Geometry::MultiPolygon { coordinates };
                 let properties = vec![
                     ("name".to_string(), boundary.name.clone()),
                     ("admin_level".to_string(), boundary.admin_level.to_string()),
@@ -102,16 +84,6 @@ impl AdminOutput for Vec<AdminBoundary> {
     }
 }
 
-impl RTreeObject for AdminBoundary {
-    type Envelope = AABB<[f64; 2]>;
-
-    fn envelope(&self) -> Self::Envelope {
-        let sw = [self.sw.0, self.sw.1];
-        let ne = [self.ne.0, self.ne.1];
-        AABB::from_corners(sw, ne)
-    }
-}
-
 pub fn get_boundaries(objs: &BTreeMap<OsmId, OsmObj>) -> Vec<AdminBoundary> {
     objs.values()
         .filter_map(|obj| {
@@ -122,16 +94,12 @@ pub fn get_boundaries(objs: &BTreeMap<OsmId, OsmObj>) -> Vec<AdminBoundary> {
             }
             let name = relation.tags.get("name")?.clone();
             let admin_level = relation.tags.get("admin_level")?.parse().ok()?;
-            let geometry = build_boundary(relation, objs)?;
-            let rect = geometry.bounding_rect()?;
-            let sw = rect.min().x_y();
-            let ne = rect.max().x_y();
+            let multi_polygon = build_boundary(relation, objs)?;
+            let geometry = BoundaryGeometry::new(multi_polygon).ok()?;
             let boundary = AdminBoundary {
                 name,
                 admin_level,
                 geometry,
-                sw,
-                ne,
             };
             Some(boundary)
         })
@@ -143,6 +111,7 @@ mod get_boundaries {
     use super::*;
     use osm_boundaries_utils::osm_builder::{named_node, OsmBuilder};
     use osmpbfreader::objects::{OsmObj, Relation};
+    use rstar::RTree;
 
     trait OsmObjExt {
         fn relation_mut(&mut self) -> Option<&mut Relation>;
@@ -158,86 +127,87 @@ mod get_boundaries {
         }
     }
 
-    #[test]
-    fn geometry() {
+    fn create_objects(tags: Vec<(&str, &str)>) -> BTreeMap<OsmId, OsmObj> {
         let mut builder = OsmBuilder::new();
         let rel_id = builder
             .relation()
             .outer(vec![
-                named_node(3.4, 5.2, "start"),
-                named_node(5.4, 5.1, "1"),
-                named_node(2.4, 3.1, "2"),
-                named_node(3.4, 5.2, "start"),
+                named_node(13., 53., "start"),
+                named_node(13., 52., "1"),
+                named_node(14., 52., "2"),
+                named_node(14., 53., "3"),
+                named_node(13., 53., "start"),
             ])
             .relation_id
             .into();
-
         let obj = builder.objects.get_mut(&rel_id).unwrap();
         let rel = obj.relation_mut().unwrap();
-        rel.tags
-            .insert("boundary".to_string(), "administrative".to_string());
-        rel.tags.insert("name".to_string(), "some_name".to_string());
-        rel.tags.insert("admin_level".to_string(), 11.to_string());
-
-        let boundary = get_boundaries(&builder.objects).pop().unwrap();
-        let geometry = boundary.geometry();
-        match geometry {
-            Geometry::MultiPolygon { coordinates } => {
-                assert_eq!(coordinates.len(), 1);
-                assert_eq!(coordinates[0].len(), 1);
-                assert_eq!(coordinates[0][0].len(), 4);
-            }
-            _ => unreachable!(),
+        for (key, value) in tags {
+            rel.tags.insert(key.to_string(), value.to_string());
         }
-        // assert_eq!(boundaries.len(), 1);
+        builder.objects
+    }
+
+    #[test]
+    fn geometry() {
+        let tags = vec![
+            ("boundary", "administrative"),
+            ("name", "some_name"),
+            ("admin_level", "11"),
+        ];
+        let objects = create_objects(tags);
+
+        let boundary = get_boundaries(&objects).pop().unwrap();
+        let coordinates = boundary.geometry.coordinates();
+        assert_eq!(coordinates.len(), 1);
+        assert_eq!(coordinates[0].len(), 1);
+        assert_eq!(coordinates[0][0].len(), 5);
     }
 
     #[test]
     fn boundary_with_multiple_nodes() {
-        let mut builder = OsmBuilder::new();
-        let rel_id = builder
-            .relation()
-            .outer(vec![
-                named_node(3.4, 5.2, "start"),
-                named_node(5.4, 5.1, "1"),
-                named_node(2.4, 3.1, "2"),
-                named_node(3.4, 5.2, "start"),
-            ])
-            .relation_id
-            .into();
-
-        let obj = builder.objects.get_mut(&rel_id).unwrap();
-        let rel = obj.relation_mut().unwrap();
-        rel.tags
-            .insert("boundary".to_string(), "administrative".to_string());
-        rel.tags.insert("name".to_string(), "some_name".to_string());
-        rel.tags.insert("admin_level".to_string(), 11.to_string());
-
-        let boundaries = get_boundaries(&builder.objects);
+        let tags = vec![
+            ("boundary", "administrative"),
+            ("name", "some_name"),
+            ("admin_level", "11"),
+        ];
+        let objects = create_objects(tags);
+        let boundaries = get_boundaries(&objects);
         assert_eq!(boundaries.len(), 1);
     }
 
     #[test]
-    fn relation_with_missing_tags() {
-        let mut builder = OsmBuilder::new();
-        let rel_id = builder
-            .relation()
-            .outer(vec![
-                named_node(3.4, 5.2, "start"),
-                named_node(5.4, 5.1, "1"),
-                named_node(2.4, 3.1, "2"),
-                named_node(3.4, 5.2, "start"),
-            ])
-            .relation_id
-            .into();
-
-        let obj = builder.objects.get_mut(&rel_id).unwrap();
-        let rel = obj.relation_mut().unwrap();
-        rel.tags.insert("boundary".to_string(), "wrong".to_string());
-        rel.tags.insert("name".to_string(), "some_name".to_string());
-        rel.tags.insert("admin_level".to_string(), 11.to_string());
-
-        let boundaries = get_boundaries(&builder.objects);
+    fn relation_with_wrong_tags() {
+        let tags = vec![
+            ("boundary", "wrong"),
+            ("name", "some_name"),
+            ("admin_level", "11"),
+        ];
+        let objects = create_objects(tags);
+        let boundaries = get_boundaries(&objects);
         assert_eq!(boundaries.len(), 0);
+    }
+
+    #[test]
+    fn locate_line_string_in_boundary() {
+        let tags = vec![
+            ("boundary", "administrative"),
+            ("name", "some_name"),
+            ("admin_level", "11"),
+        ];
+        let objects = create_objects(tags);
+        let boundaries = get_boundaries(&objects);
+        let tree = RTree::<AdminBoundary>::bulk_load(boundaries);
+        let aabb = AABB::from_points(&vec![[13.25, 52.5], [13.74, 52.5]]);
+        let matches = tree.locate_in_envelope_intersecting(&aabb);
+        assert_eq!(matches.count(), 1);
+
+        let aabb = AABB::from_points(&vec![[12.75, 4.5], [13.25, 4.5]]);
+        let matches = tree.locate_in_envelope_intersecting(&aabb);
+        assert_eq!(matches.count(), 0);
+
+        let aabb = AABB::from_points(&vec![[12.25, 4.5], [12.75, 4.5]]);
+        let matches = tree.locate_in_envelope_intersecting(&aabb);
+        assert_eq!(matches.count(), 0);
     }
 }

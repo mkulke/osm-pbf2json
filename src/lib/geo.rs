@@ -1,6 +1,6 @@
 use geo::prelude::*;
 use geo::Closest;
-use geo_types::{Coordinate, Geometry, Line, LineString, MultiPoint, Point, Polygon};
+use geo_types::{Coordinate, Geometry, Line, LineString, MultiPoint, MultiPolygon, Point, Polygon};
 use serde::{Deserialize, Serialize};
 use std::convert::{TryFrom, TryInto};
 
@@ -25,6 +25,45 @@ impl From<(f64, f64)> for Location {
 pub struct SegmentGeometry {
     bounding_box: BoundingBox,
     line_string: LineString<f64>,
+}
+
+#[derive(Clone, Debug)]
+pub struct BoundaryGeometry {
+    bounding_box: BoundingBox,
+    multi_polygon: MultiPolygon<f64>,
+}
+
+impl BoundaryGeometry {
+    pub fn new(multi_polygon: MultiPolygon<f64>) -> Result<Self, &'static str> {
+        let bounding_box = (&multi_polygon).try_into()?;
+        Ok(BoundaryGeometry {
+            bounding_box,
+            multi_polygon,
+        })
+    }
+
+    pub fn coordinates(&self) -> Vec<Vec<Vec<(f64, f64)>>> {
+        self.multi_polygon
+            .clone()
+            .into_iter()
+            .map(|polygon| {
+                let (exterior, interiours) = polygon.into_inner();
+                let mut rings = vec![exterior];
+                rings.extend(interiours);
+                rings
+            })
+            .map(|line_strings| {
+                line_strings
+                    .iter()
+                    .map(|ls| ls.points_iter().map(|p| (p.x(), p.y())).collect())
+                    .collect()
+            })
+            .collect()
+    }
+
+    pub fn sw_ne(&self) -> ([f64; 2], [f64; 2]) {
+        (self.bounding_box.sw, self.bounding_box.ne)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -64,18 +103,29 @@ impl BoundingBox {
     }
 }
 
+impl TryFrom<&MultiPolygon<f64>> for BoundingBox {
+    type Error = &'static str;
+
+    fn try_from(multi_polygon: &MultiPolygon<f64>) -> Result<Self, Self::Error> {
+        let rect = multi_polygon
+            .bounding_rect()
+            .ok_or("cannot get bounding box for the given set of coordinates")?;
+        let sw = [rect.min().x, rect.min().y];
+        let ne = [rect.max().x, rect.max().y];
+        Ok(BoundingBox { sw, ne })
+    }
+}
+
 impl TryFrom<&LineString<f64>> for BoundingBox {
     type Error = &'static str;
 
     fn try_from(line_string: &LineString<f64>) -> Result<Self, Self::Error> {
-        line_string
+        let rect = line_string
             .bounding_rect()
-            .map(|rect| {
-                let sw = [rect.min().x, rect.min().y];
-                let ne = [rect.max().x, rect.max().y];
-                BoundingBox { sw, ne }
-            })
-            .ok_or("cannot get bounding box for the given set of coordinates")
+            .ok_or("cannot get bounding box for the given set of coordinates")?;
+        let sw = [rect.min().x, rect.min().y];
+        let ne = [rect.max().x, rect.max().y];
+        Ok(BoundingBox { sw, ne })
     }
 }
 
