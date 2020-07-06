@@ -1,8 +1,10 @@
+use self::admin::AdminBoundary;
 use self::geo::{get_compound_coordinates, get_geo_info, Bounds, Location};
 use admin::{get_boundaries, AdminOutput};
 use filter::{filter, Condition, Group};
 use osmpbfreader::objects::{Node, OsmId, OsmObj, Relation, Tags, Way};
 use osmpbfreader::OsmPbfReader;
+use rstar::RTree;
 use serde::{Deserialize, Serialize};
 use serde_json::to_string;
 use std::collections::BTreeMap;
@@ -196,11 +198,45 @@ pub fn extract_streets(
     writer: &mut dyn Write,
     geo_json: bool,
     name: Option<String>,
+    boundary: Option<u8>,
 ) -> Result<(), Box<dyn Error>> {
     let mut pbf = OsmPbfReader::new(file);
     let groups = build_street_group(name);
     let objs = pbf.get_objs_and_deps(|obj| filter(obj, &groups))?;
     let streets = get_streets(&objs);
+    let streets = {
+        match boundary {
+            None => streets,
+            Some(level) => {
+                let groups = build_admin_group(vec![level]);
+                let objs = pbf.get_objs_and_deps(|obj| filter(obj, &groups))?;
+                let boundaries = get_boundaries(&objs);
+                let tree = RTree::<AdminBoundary>::bulk_load(boundaries);
+                streets
+                    .into_iter()
+                    .flat_map(|mut street| {
+                        let matches = street.boundary_matches(&tree);
+                        match matches.len() {
+                            0 => vec![street],
+                            1 => {
+                                let boundary = matches[0];
+                                street.set_boundary(boundary.name());
+                                return vec![street];
+                            }
+                            _ => matches
+                                .iter()
+                                .map(|boundary| {
+                                    let mut new_street = street.clone();
+                                    new_street.set_boundary(boundary.name());
+                                    new_street
+                                })
+                                .collect(),
+                        }
+                    })
+                    .collect()
+            }
+        }
+    };
     if geo_json {
         let geojson = streets.to_geojson()?;
         writeln!(writer, "{}", geojson)?;

@@ -27,6 +27,8 @@ enum Cli {
         geojson: bool,
         #[structopt(short, long)]
         name: Option<String>,
+        #[structopt(short, long)]
+        boundary: Option<u8>,
     },
     Boundaries {
         #[structopt(flatten)]
@@ -52,9 +54,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             shared_opts,
             geojson,
             name,
+            boundary,
         } => {
             let file = File::open(shared_opts.path)?;
-            extract_streets(file, &mut handle, geojson, name)?;
+            extract_streets(file, &mut handle, geojson, name, boundary)?;
         }
         Cli::Boundaries {
             shared_opts,

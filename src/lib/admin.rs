@@ -20,6 +20,12 @@ pub struct AdminBoundary {
     geometry: BoundaryGeometry,
 }
 
+impl AdminBoundary {
+    pub fn name(&self) -> &str {
+        self.name.as_str()
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 struct JSONBBox {
     sw: [f64; 2],
@@ -127,7 +133,7 @@ mod get_boundaries {
         }
     }
 
-    fn create_objects(tags: &Vec<(&str, &str)>, offset: f64) -> BTreeMap<OsmId, OsmObj> {
+    fn create_objects(tags: &[(&str, &str)], offset: f64) -> BTreeMap<OsmId, OsmObj> {
         let mut builder = OsmBuilder::new();
         let rel_id = builder
             .relation()
@@ -153,15 +159,13 @@ mod get_boundaries {
             .map(|(key, value)| {
                 let id = key.inner_id() + 1000;
                 match value {
-                    OsmObj::Node(node) => {
+                    OsmObj::Node(mut node) => {
                         let node_id = NodeId(id);
-                        let mut node = node.clone();
                         node.id = node_id;
                         (OsmId::Node(node_id), OsmObj::Node(node))
                     }
-                    OsmObj::Way(way) => {
+                    OsmObj::Way(mut way) => {
                         let way_id = WayId(id);
-                        let mut way = way.clone();
                         way.id = way_id;
                         let node_ids = way
                             .nodes
@@ -171,9 +175,8 @@ mod get_boundaries {
                         way.nodes = node_ids;
                         (OsmId::Way(way_id), OsmObj::Way(way))
                     }
-                    OsmObj::Relation(relation) => {
+                    OsmObj::Relation(mut relation) => {
                         let relation_id = RelationId(id);
-                        let mut relation = relation.clone();
                         for a_ref in relation.refs.iter_mut() {
                             let ref_id = a_ref.member.inner_id() + 1000;
                             a_ref.member = OsmId::Way(WayId(ref_id));

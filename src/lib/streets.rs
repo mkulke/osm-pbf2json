@@ -1,4 +1,4 @@
-// use super::admin::AdminBoundary;
+use super::admin::AdminBoundary;
 use super::geo::{Length, Midpoint, SegmentGeometry};
 use super::geojson::{Entity, Geometry};
 use itertools::Itertools;
@@ -22,6 +22,7 @@ const RTREE_PADDING: f64 = 0.001;
 struct JSONStreet {
     id: i64,
     name: String,
+    boundary: Option<String>,
     length: f64,
     loc: (f64, f64),
 }
@@ -37,10 +38,12 @@ impl StreetOutput for Vec<Street> {
             let id = street.id();
             let loc = street.middle().ok_or("could not calculate middle")?;
             let name = street.name.clone();
+            let boundary = street.boundary.clone();
             let length = street.length();
             let json_street = JSONStreet {
                 id,
                 name,
+                boundary,
                 length,
                 loc,
             };
@@ -118,11 +121,15 @@ impl Street {
         geometries.midpoint()
     }
 
-    // fn boundary_matches<'a>(&self, tree: &'a RTree<AdminBoundary>) -> Vec<&'a AdminBoundary> {
-    //     let points: Vec<[f64; 2]> = self.into();
-    //     let aabb = AABB::from_points(&points);
-    //     tree.locate_in_envelope_intersecting(&aabb).collect()
-    // }
+    pub fn boundary_matches<'a>(&self, tree: &'a RTree<AdminBoundary>) -> Vec<&'a AdminBoundary> {
+        let points: Vec<[f64; 2]> = self.into();
+        let aabb = AABB::from_points(&points);
+        tree.locate_in_envelope_intersecting(&aabb).collect()
+    }
+
+    pub fn set_boundary(&mut self, name: &str) {
+        self.boundary = Some(name.to_string());
+    }
 }
 
 fn get_coordinates(way: &Way, objs: &BTreeMap<OsmId, OsmObj>) -> Option<Vec<(f64, f64)>> {
@@ -207,6 +214,7 @@ pub fn get_streets(objs: &BTreeMap<OsmId, OsmObj>) -> Vec<Street> {
                 .map(|segments| Street {
                     name: name.clone(),
                     segments: segments.to_vec(),
+                    boundary: None,
                 })
                 .collect();
             streets
@@ -214,10 +222,11 @@ pub fn get_streets(objs: &BTreeMap<OsmId, OsmObj>) -> Vec<Street> {
         .collect()
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Street {
     name: String,
     segments: Vec<Segment>,
+    boundary: Option<String>,
 }
 
 impl From<&Street> for Vec<Vec<(f64, f64)>> {
@@ -393,7 +402,11 @@ mod get_streets {
         let seg_2 = create_segment(43, vec![(0., 3.), (1., 4.)]);
         let segments = vec![seg_1, seg_2];
         let name = "some name".to_string();
-        let street = Street { name, segments };
+        let street = Street {
+            name,
+            segments,
+            boundary: None,
+        };
         let length = street.length();
         assert_relative_eq!(length, 2.0 + 2.0_f64.sqrt(), epsilon = f64::EPSILON);
     }

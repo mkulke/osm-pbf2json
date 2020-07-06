@@ -46,7 +46,7 @@ fn extract_rosa_luxemburg_street() {
     let mut cursor = Cursor::new(Vec::new());
     let name = "Rosa-Luxemburg-Straße".to_string();
     let file = File::open("./tests/data/alexanderplatz.pbf").unwrap();
-    extract_streets(file, &mut cursor, false, Some(name)).unwrap();
+    extract_streets(file, &mut cursor, false, Some(name), None).unwrap();
     let string = get_string(&mut cursor);
     let lines: Vec<&str> = string.trim().split('\n').collect();
     assert_eq!(lines.len(), 1);
