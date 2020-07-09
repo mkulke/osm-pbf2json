@@ -35,7 +35,7 @@ pub fn parse(selector_str: String) -> Vec<Group> {
 
 fn check_condition(tags: &Tags, condition: &Condition) -> bool {
     match condition {
-        Condition::TagPresence(key) => tags.contains_key(key),
+        Condition::TagPresence(key) => tags.contains_key(key.as_str()),
         Condition::ValueMatch(key, value) => tags.contains(key, value),
     }
 }
@@ -77,8 +77,7 @@ mod tests {
         assert_eq!(filter(&obj, &[group.clone()]), false);
 
         let mut node = new_node();
-        node.tags
-            .insert("amenity".to_string(), "theatre".to_string());
+        node.tags.insert("amenity".into(), "theatre".into());
         let obj = OsmObj::Node(node);
 
         assert_eq!(filter(&obj, &[group]), true);
@@ -91,14 +90,12 @@ mod tests {
         let group = Group { conditions };
 
         let mut node = new_node();
-        node.tags
-            .insert("amenity".to_string(), "theatre".to_string());
+        node.tags.insert("amenity".into(), "theatre".into());
         let obj = OsmObj::Node(node);
         assert_eq!(filter(&obj, &[group.clone()]), true);
 
         let mut node = new_node();
-        node.tags
-            .insert("amenity".to_string(), "cinema".to_string());
+        node.tags.insert("amenity".into(), "cinema".into());
         let obj = OsmObj::Node(node);
         assert_eq!(filter(&obj, &[group]), false);
     }
@@ -113,10 +110,8 @@ mod tests {
         let group_2 = Group { conditions };
 
         let mut node = new_node();
-        node.tags
-            .insert("amenity".to_string(), "theatre".to_string());
-        node.tags
-            .insert("name".to_string(), "Waldbühne".to_string());
+        node.tags.insert("amenity".into(), "theatre".into());
+        node.tags.insert("name".into(), "Waldbühne".into());
         let obj = OsmObj::Node(node);
 
         assert_eq!(filter(&obj, &[group_1, group_2]), true);
@@ -131,10 +126,8 @@ mod tests {
         let group = Group { conditions };
 
         let mut node = new_node();
-        node.tags
-            .insert("amenity".to_string(), "theatre".to_string());
-        node.tags
-            .insert("name".to_string(), "Waldbühne".to_string());
+        node.tags.insert("amenity".into(), "theatre".into());
+        node.tags.insert("name".into(), "Waldbühne".into());
         let obj = OsmObj::Node(node);
 
         assert_eq!(filter(&obj, &[group]), true);

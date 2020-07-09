@@ -18,6 +18,13 @@ use std::io::Write;
 
 const RTREE_PADDING: f64 = 0.001;
 
+#[derive(Debug, Clone)]
+pub struct Street {
+    name: String,
+    segments: Vec<Segment>,
+    boundary: Option<String>,
+}
+
 #[derive(Serialize, Deserialize)]
 struct JSONStreet {
     id: i64,
@@ -75,8 +82,8 @@ impl StreetOutput for Vec<Street> {
                 let entity = Entity::Feature {
                     geometry,
                     properties: vec![
-                        ("name".to_string(), street.name.clone()),
-                        ("stroke".to_string(), random_color),
+                        ("name".into(), street.name.clone()),
+                        ("stroke".into(), random_color),
                     ]
                     .into_iter()
                     .collect(),
@@ -121,14 +128,34 @@ impl Street {
         geometries.midpoint()
     }
 
-    pub fn boundary_matches<'a>(&self, tree: &'a RTree<AdminBoundary>) -> Vec<&'a AdminBoundary> {
+    fn boundary_matches<'a>(&self, tree: &'a RTree<AdminBoundary>) -> Vec<&'a AdminBoundary> {
         let points: Vec<[f64; 2]> = self.into();
         let aabb = AABB::from_points(&points);
         tree.locate_in_envelope_intersecting(&aabb).collect()
     }
 
-    pub fn set_boundary(&mut self, name: &str) {
-        self.boundary = Some(name.to_string());
+    fn set_boundary(&mut self, name: &str) {
+        self.boundary = Some(name.into());
+    }
+
+    pub fn split_by_boundaries(mut self, tree: &RTree<AdminBoundary>) -> Vec<Self> {
+        let matches = self.boundary_matches(tree);
+        match matches.len() {
+            0 => vec![self],
+            1 => {
+                let boundary = matches[0];
+                self.set_boundary(&boundary.name);
+                return vec![self];
+            }
+            _ => matches
+                .iter()
+                .map(|boundary| {
+                    let mut new_street = self.clone();
+                    new_street.set_boundary(&boundary.name);
+                    new_street
+                })
+                .collect(),
+        }
     }
 }
 
@@ -193,11 +220,11 @@ fn get_clusters(segments: Vec<Segment>) -> Vec<Vec<Segment>> {
         .collect()
 }
 
-fn get_name_groups(objs: &BTreeMap<OsmId, OsmObj>) -> HashMap<&String, Vec<&Way>> {
+fn get_name_groups(objs: &BTreeMap<OsmId, OsmObj>) -> HashMap<&str, Vec<&Way>> {
     objs.values()
         .filter_map(|obj| {
             let way = obj.way()?;
-            let name = way.tags.get("name")?;
+            let name: &str = way.tags.get("name")?;
             Some((name, way))
         })
         .into_group_map()
@@ -212,7 +239,7 @@ pub fn get_streets(objs: &BTreeMap<OsmId, OsmObj>) -> Vec<Street> {
             let streets: Vec<Street> = clusters
                 .iter()
                 .map(|segments| Street {
-                    name: name.clone(),
+                    name: (*name).into(),
                     segments: segments.to_vec(),
                     boundary: None,
                 })
@@ -220,13 +247,6 @@ pub fn get_streets(objs: &BTreeMap<OsmId, OsmObj>) -> Vec<Street> {
             streets
         })
         .collect()
-}
-
-#[derive(Debug, Clone)]
-pub struct Street {
-    name: String,
-    segments: Vec<Segment>,
-    boundary: Option<String>,
 }
 
 impl From<&Street> for Vec<Vec<(f64, f64)>> {
@@ -305,7 +325,7 @@ mod get_streets {
 
     fn add_way(id: WayId, name: &str, nodes: Vec<NodeId>, objs: &mut BTreeMap<OsmId, OsmObj>) {
         let mut tags = Tags::new();
-        tags.insert("name".to_string(), name.to_string());
+        tags.insert("name".into(), name.into());
         let way = Way { id, tags, nodes };
         objs.insert(id.into(), way.into());
     }
@@ -401,7 +421,7 @@ mod get_streets {
         let seg_1 = create_segment(42, vec![(0., 1.), (0., 3.)]);
         let seg_2 = create_segment(43, vec![(0., 3.), (1., 4.)]);
         let segments = vec![seg_1, seg_2];
-        let name = "some name".to_string();
+        let name = String::from("some name");
         let street = Street {
             name,
             segments,

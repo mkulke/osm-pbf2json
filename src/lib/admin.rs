@@ -15,15 +15,9 @@ pub trait AdminOutput {
 }
 
 pub struct AdminBoundary {
-    name: String,
+    pub name: String,
     admin_level: u8,
     geometry: BoundaryGeometry,
-}
-
-impl AdminBoundary {
-    pub fn name(&self) -> &str {
-        self.name.as_str()
-    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -73,8 +67,11 @@ impl AdminOutput for Vec<AdminBoundary> {
                 let coordinates = boundary.geometry.coordinates();
                 let geometry = Geometry::MultiPolygon { coordinates };
                 let properties = vec![
-                    ("name".to_string(), boundary.name.clone()),
-                    ("admin_level".to_string(), boundary.admin_level.to_string()),
+                    (String::from("name"), boundary.name.clone()),
+                    (
+                        String::from("admin_level"),
+                        boundary.admin_level.to_string(),
+                    ),
                 ]
                 .into_iter()
                 .collect();
@@ -98,7 +95,7 @@ pub fn get_boundaries(objs: &BTreeMap<OsmId, OsmObj>) -> Vec<AdminBoundary> {
             if boundary != "administrative" {
                 return None;
             }
-            let name = relation.tags.get("name")?.clone();
+            let name = relation.tags.get("name")?.clone().into();
             let admin_level = relation.tags.get("admin_level")?.parse().ok()?;
             let multi_polygon = build_boundary(relation, objs)?;
             let geometry = BoundaryGeometry::new(multi_polygon).ok()?;
@@ -149,7 +146,7 @@ mod get_boundaries {
         let obj = builder.objects.get_mut(&rel_id).unwrap();
         let rel = obj.relation_mut().unwrap();
         for (key, value) in tags {
-            rel.tags.insert(key.to_string(), value.to_string());
+            rel.tags.insert((*key).into(), (*value).into());
         }
         builder.objects
     }

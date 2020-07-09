@@ -487,8 +487,7 @@ checksum = "94af325bc33c7f60191be4e2c984d48aaa21e2854f473b85398344b60c9b6358"
 [[package]]
 name = "osm_boundaries_utils"
 version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07dcd9a020f059e9f3c671091e80a6205a9ef24c89468887a7b26b6805f48c3e"
+source = "git+https://github.com/mkulke/osm_boundaries_utils_rs?branch=osmbpfreader-0_14#a07619e7104a0735ce44270739ab55ed45967448"
 dependencies = [
  "geo",
  "geo-types",
@@ -518,9 +517,9 @@ dependencies = [
 
 [[package]]
 name = "osmpbfreader"
-version = "0.13.4"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3562dde01d2f01e5315d270a1be25ec09eaf71de4d9b14e7be3caef217d8826"
+checksum = "c35ee93f436bd4685458c4f27df8071f7ff10ee4f9fadf1d4cfd14a940bc5672"
 dependencies = [
  "byteorder",
  "flat_map",
@@ -532,6 +531,7 @@ dependencies = [
  "rental",
  "serde",
  "serde_derive",
+ "smartstring",
 ]
 
 [[package]]
@@ -860,10 +860,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c7cb5678e1615754284ec264d9bb5b4c27d2018577fd90ac0ceb578591ed5ee4"
 
 [[package]]
+name = "smartstring"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2bdec7d62192ad94e7b16d49856c007d81ae1cf541cd29b4c04b755df39fd80d"
+dependencies = [
+ "serde",
+ "static_assertions",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dba1a27d3efae4351c8051072d619e3ade2820635c3958d826bfea39d59b54c8"
+
+[[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "strsim"

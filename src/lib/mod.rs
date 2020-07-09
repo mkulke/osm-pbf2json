@@ -214,25 +214,7 @@ pub fn extract_streets(
                 let tree = RTree::<AdminBoundary>::bulk_load(boundaries);
                 streets
                     .into_iter()
-                    .flat_map(|mut street| {
-                        let matches = street.boundary_matches(&tree);
-                        match matches.len() {
-                            0 => vec![street],
-                            1 => {
-                                let boundary = matches[0];
-                                street.set_boundary(boundary.name());
-                                return vec![street];
-                            }
-                            _ => matches
-                                .iter()
-                                .map(|boundary| {
-                                    let mut new_street = street.clone();
-                                    new_street.set_boundary(boundary.name());
-                                    new_street
-                                })
-                                .collect(),
-                        }
-                    })
+                    .flat_map(|street| street.split_by_boundaries(&tree))
                     .collect()
             }
         }
@@ -314,7 +296,7 @@ mod get_coordinates {
         ids.into_iter()
             .map(|id| Ref {
                 member: id,
-                role: "something".to_string(),
+                role: "something".into(),
             })
             .collect()
     }
