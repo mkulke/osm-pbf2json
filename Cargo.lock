@@ -486,8 +486,9 @@ checksum = "94af325bc33c7f60191be4e2c984d48aaa21e2854f473b85398344b60c9b6358"
 
 [[package]]
 name = "osm_boundaries_utils"
-version = "0.6.0"
-source = "git+https://github.com/mkulke/osm_boundaries_utils_rs?branch=osmbpfreader-0_14#a07619e7104a0735ce44270739ab55ed45967448"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8182ab764cf83a6972184baa2b72f52fad8c63667dea6be96f61f586a327787"
 dependencies = [
  "geo",
  "geo-types",
