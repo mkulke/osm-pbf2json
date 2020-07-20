@@ -1,101 +1,22 @@
 use super::admin::AdminBoundary;
 use super::geo::{Length, Midpoint, SegmentGeometry};
-use super::geojson::{Entity, Geometry};
 use itertools::Itertools;
 use osmpbfreader::objects::{OsmId, OsmObj, Way, WayId};
 use petgraph::algo::kosaraju_scc;
 use petgraph::graph::UnGraph;
-use rand::random;
 use rayon::prelude::*;
 use rstar::RTree;
 use rstar::{RTreeObject, AABB};
-use serde::{Deserialize, Serialize};
-use serde_json::to_string;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::error::Error;
 use std::hash::{Hash, Hasher};
-use std::io::Write;
 
 const RTREE_PADDING: f64 = 0.001;
 
 #[derive(Debug, Clone)]
 pub struct Street {
-    name: String,
-    segments: Vec<Segment>,
-    boundary: Option<String>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct JSONStreet {
-    id: i64,
-    name: String,
-    boundary: Option<String>,
-    length: f64,
-    loc: (f64, f64),
-}
-
-pub trait StreetOutput {
-    fn to_geojson(&self) -> Result<String, Box<dyn Error>>;
-    fn write_json_lines(self, writer: &mut dyn Write) -> Result<(), Box<dyn Error>>;
-}
-
-impl StreetOutput for Vec<Street> {
-    fn write_json_lines(self, writer: &mut dyn Write) -> Result<(), Box<dyn Error>> {
-        for street in self.iter() {
-            let id = street.id();
-            let loc = street.middle().ok_or("could not calculate middle")?;
-            let name = street.name.clone();
-            let boundary = street.boundary.clone();
-            let length = street.length();
-            let json_street = JSONStreet {
-                id,
-                name,
-                boundary,
-                length,
-                loc,
-            };
-            let json = to_string(&json_street)?;
-            writeln!(writer, "{}", json)?;
-        }
-        Ok(())
-    }
-
-    fn to_geojson(&self) -> Result<String, Box<dyn Error>> {
-        let features = self
-            .iter()
-            .filter_map(|street| {
-                let geometries: Vec<_> = street
-                    .segments
-                    .iter()
-                    .filter(|segment| segment.geometry.len() >= 2)
-                    .map(|segment| segment.geometry.clone())
-                    .collect();
-                if geometries.is_empty() {
-                    return None;
-                }
-                let coordinates = geometries.iter().map(|g| g.into()).collect();
-                let geometry = Geometry::MultiLineString { coordinates };
-                let r = random::<u8>();
-                let g = random::<u8>();
-                let b = random::<u8>();
-                let random_color = format!("#{:02X}{:02X}{:02X}", r, g, b);
-                let entity = Entity::Feature {
-                    geometry,
-                    properties: vec![
-                        ("name".into(), street.name.clone()),
-                        ("stroke".into(), random_color),
-                    ]
-                    .into_iter()
-                    .collect(),
-                };
-                Some(entity)
-            })
-            .collect();
-
-        let feature_collection = Entity::FeatureCollection { features };
-        let string = to_string(&feature_collection)?;
-        Ok(string)
-    }
+    pub name: String,
+    pub segments: Vec<Segment>,
+    pub boundary: Option<String>,
 }
 
 impl Length for Street {
@@ -110,7 +31,7 @@ impl Length for Street {
 }
 
 impl Street {
-    fn id(&self) -> i64 {
+    pub fn id(&self) -> i64 {
         let ids: Vec<WayId> = self.segments.iter().map(|segment| segment.way_id).collect();
         let mut hash = 0;
         for id in ids.iter() {
@@ -119,7 +40,7 @@ impl Street {
         hash
     }
 
-    fn middle(&self) -> Option<(f64, f64)> {
+    pub fn middle(&self) -> Option<(f64, f64)> {
         let geometries: Vec<&SegmentGeometry> = self
             .segments
             .iter()
@@ -277,9 +198,9 @@ impl From<&Street> for Vec<[f64; 2]> {
 }
 
 #[derive(Clone, Debug)]
-struct Segment {
+pub struct Segment {
     way_id: WayId,
-    geometry: SegmentGeometry,
+    pub geometry: SegmentGeometry,
 }
 
 impl Hash for Segment {

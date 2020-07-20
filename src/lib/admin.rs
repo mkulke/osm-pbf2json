@@ -1,36 +1,13 @@
 use super::geo::BoundaryGeometry;
-use super::geojson::{Entity, Geometry};
 use osm_boundaries_utils::build_boundary;
 use osmpbfreader::objects::{OsmId, OsmObj};
 use rstar::{RTreeObject, AABB};
-use serde::{Deserialize, Serialize};
-use serde_json::to_string;
 use std::collections::BTreeMap;
-use std::error::Error;
-use std::io::Write;
-
-pub trait AdminOutput {
-    fn to_geojson(&self) -> Result<String, Box<dyn Error>>;
-    fn write_json_lines(self, writer: &mut dyn Write) -> Result<(), Box<dyn Error>>;
-}
 
 pub struct AdminBoundary {
     pub name: String,
-    admin_level: u8,
-    geometry: BoundaryGeometry,
-}
-
-#[derive(Serialize, Deserialize)]
-struct JSONBBox {
-    sw: [f64; 2],
-    ne: [f64; 2],
-}
-
-#[derive(Serialize, Deserialize)]
-struct JSONBoundary {
-    name: String,
-    admin_level: u8,
-    bbox: JSONBBox,
+    pub admin_level: u8,
+    pub geometry: BoundaryGeometry,
 }
 
 impl RTreeObject for AdminBoundary {
@@ -39,51 +16,6 @@ impl RTreeObject for AdminBoundary {
     fn envelope(&self) -> Self::Envelope {
         let (sw, ne) = self.geometry.sw_ne();
         AABB::from_corners(sw, ne)
-    }
-}
-
-impl AdminOutput for Vec<AdminBoundary> {
-    fn write_json_lines(self, writer: &mut dyn Write) -> Result<(), Box<dyn Error>> {
-        for boundary in self.iter() {
-            let name = boundary.name.clone();
-            let admin_level = boundary.admin_level;
-            let (sw, ne) = boundary.geometry.sw_ne();
-            let bbox = JSONBBox { sw, ne };
-            let json_boundary = JSONBoundary {
-                name,
-                admin_level,
-                bbox,
-            };
-            let json = to_string(&json_boundary)?;
-            writeln!(writer, "{}", json)?;
-        }
-        Ok(())
-    }
-
-    fn to_geojson(&self) -> Result<String, Box<dyn Error>> {
-        let features = self
-            .iter()
-            .map(|boundary| {
-                let coordinates = boundary.geometry.coordinates();
-                let geometry = Geometry::MultiPolygon { coordinates };
-                let properties = vec![
-                    (String::from("name"), boundary.name.clone()),
-                    (
-                        String::from("admin_level"),
-                        boundary.admin_level.to_string(),
-                    ),
-                ]
-                .into_iter()
-                .collect();
-                Entity::Feature {
-                    geometry,
-                    properties,
-                }
-            })
-            .collect();
-        let feature_collection = Entity::FeatureCollection { features };
-        let string = to_string(&feature_collection)?;
-        Ok(string)
     }
 }
 
