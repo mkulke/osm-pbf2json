@@ -2,7 +2,7 @@ use super::geo::{Length, Midpoint, SegmentGeometry};
 use super::items::AdminBoundary;
 use super::items::{Segment, Street};
 use itertools::Itertools;
-use osmpbfreader::objects::{OsmId, OsmObj, Way, WayId};
+use osmpbfreader::objects::{OsmId, OsmObj, Way};
 use petgraph::algo::kosaraju_scc;
 use petgraph::graph::UnGraph;
 use rayon::prelude::*;
@@ -26,10 +26,10 @@ impl Length for Street {
 
 impl Street {
     pub fn id(&self) -> i64 {
-        let ids: Vec<WayId> = self.segments.iter().map(|segment| segment.way_id).collect();
+        let ids: Vec<i64> = self.segments.iter().map(|segment| segment.way_id).collect();
         let mut hash = 0;
         for id in ids.iter() {
-            hash ^= id.0;
+            hash ^= id;
         }
         hash
     }
@@ -207,7 +207,7 @@ impl Eq for Segment {}
 
 impl Segment {
     fn new(way: &Way, objs: &BTreeMap<OsmId, OsmObj>) -> Result<Self, &'static str> {
-        let way_id = way.id;
+        let way_id = way.id.0;
         let coordinates =
             get_coordinates(way, objs).ok_or("could not construct coordinates for way")?;
         let geometry = SegmentGeometry::new(coordinates)?;
@@ -319,8 +319,7 @@ mod get_streets {
         assert_eq!(streets.len(), 2);
     }
 
-    fn create_segment(id: i64, coordinates: Vec<(f64, f64)>) -> Segment {
-        let way_id = WayId(id);
+    fn create_segment(way_id: i64, coordinates: Vec<(f64, f64)>) -> Segment {
         let geometry = SegmentGeometry::new(coordinates).unwrap();
         Segment { way_id, geometry }
     }

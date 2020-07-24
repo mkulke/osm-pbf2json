@@ -1,6 +1,5 @@
 use super::geo::BoundaryGeometry;
 use super::geo::SegmentGeometry;
-use osmpbfreader::objects::WayId;
 
 pub struct AdminBoundary {
     pub name: String,
@@ -17,6 +16,6 @@ pub struct Street {
 
 #[derive(Clone, Debug)]
 pub struct Segment {
-    pub way_id: WayId,
+    pub way_id: i64,
     pub geometry: SegmentGeometry,
 }
