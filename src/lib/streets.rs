@@ -1,5 +1,6 @@
-use super::admin::AdminBoundary;
 use super::geo::{Length, Midpoint, SegmentGeometry};
+use super::items::AdminBoundary;
+use super::items::{Segment, Street};
 use itertools::Itertools;
 use osmpbfreader::objects::{OsmId, OsmObj, Way, WayId};
 use petgraph::algo::kosaraju_scc;
@@ -11,13 +12,6 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
 const RTREE_PADDING: f64 = 0.001;
-
-#[derive(Debug, Clone)]
-pub struct Street {
-    pub name: String,
-    pub segments: Vec<Segment>,
-    pub boundary: Option<String>,
-}
 
 impl Length for Street {
     fn length(&self) -> f64 {
@@ -151,7 +145,7 @@ fn get_name_groups(objs: &BTreeMap<OsmId, OsmObj>) -> HashMap<&str, Vec<&Way>> {
         .into_group_map()
 }
 
-pub fn get_streets(objs: &BTreeMap<OsmId, OsmObj>) -> Vec<Street> {
+pub fn extract_streets(objs: &BTreeMap<OsmId, OsmObj>) -> Vec<Street> {
     get_name_groups(objs)
         .into_par_iter()
         .flat_map(|(name, ways)| {
@@ -195,12 +189,6 @@ impl From<&Street> for Vec<[f64; 2]> {
             })
             .collect()
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct Segment {
-    way_id: WayId,
-    pub geometry: SegmentGeometry,
 }
 
 impl Hash for Segment {
@@ -281,7 +269,7 @@ mod get_streets {
         let node_ids = vec![NodeId(3), NodeId(4)];
         add_way(WayId(43), "street a", node_ids, &mut objs);
 
-        let streets = get_streets(&objs);
+        let streets = extract_streets(&objs);
         assert_eq!(streets.len(), 1);
 
         let street = &streets[0];
@@ -309,7 +297,7 @@ mod get_streets {
         let node_ids = vec![NodeId(2), NodeId(3)];
         add_way(WayId(41), "street b", node_ids, &mut objs);
 
-        let streets = get_streets(&objs);
+        let streets = extract_streets(&objs);
         assert_eq!(streets.len(), 2);
     }
 
@@ -327,7 +315,7 @@ mod get_streets {
         let node_ids = vec![NodeId(2), NodeId(3)];
         add_way(WayId(41), "street b", node_ids, &mut objs);
 
-        let streets = get_streets(&objs);
+        let streets = extract_streets(&objs);
         assert_eq!(streets.len(), 2);
     }
 

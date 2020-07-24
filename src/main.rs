@@ -1,4 +1,5 @@
-use lib::{extract_hierarchies, extract_streets, filter, process};
+use lib::output::Output;
+use lib::{extract_hierarchies, filter, process, streets};
 use std::error::Error;
 use std::fs::File;
 use std::io;
@@ -57,15 +58,25 @@ fn main() -> Result<(), Box<dyn Error>> {
             boundary,
         } => {
             let file = File::open(shared_opts.path)?;
-            extract_streets(file, &mut handle, geojson, name, boundary)?;
+            let streets = streets(file, name, boundary)?;
+            if geojson {
+                streets.write_geojson(&mut handle)?;
+            } else {
+                streets.write_json_lines(&mut handle)?;
+            }
         }
         Cli::Boundaries {
             shared_opts,
-            geojson,
             levels,
+            geojson,
         } => {
             let file = File::open(shared_opts.path)?;
-            extract_hierarchies(file, &mut handle, geojson, levels)?;
+            let hierarchies = extract_hierarchies(file, levels)?;
+            if geojson {
+                hierarchies.write_geojson(&mut handle)?;
+            } else {
+                hierarchies.write_json_lines(&mut handle)?;
+            }
         }
     }
     Ok(())

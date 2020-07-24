@@ -1,7 +1,6 @@
-use super::admin::AdminBoundary;
 use super::geo::Length;
 use super::geojson::{Entity, Geometry};
-use super::streets::Street;
+use super::items::{AdminBoundary, Street};
 use rand::random;
 use serde::{Deserialize, Serialize};
 use serde_json::to_string;

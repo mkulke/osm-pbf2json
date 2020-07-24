@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use osm_pbf2json::{extract_streets, filter, process};
+use osm_pbf2json::{filter, process, streets};
 use std::fs::File;
 use std::io::{Result, Write};
 
@@ -28,18 +28,17 @@ pub fn process_bench(c: &mut Criterion) {
     group.finish();
 }
 
-pub fn extract_streets_bench(c: &mut Criterion) {
+pub fn streets_bench(c: &mut Criterion) {
     let mut group = c.benchmark_group("alexanderplatz");
     group.sample_size(10);
-    group.bench_function("extract_streets", |b| {
+    group.bench_function("streets", |b| {
         b.iter(|| {
             let file = File::open("./tests/data/alexanderplatz.pbf").unwrap();
-            let mut writer = MockWriter;
-            extract_streets(file, &mut writer, false, None, None).unwrap();
+            streets(file, None, None).unwrap();
         })
     });
     group.finish();
 }
 
-criterion_group!(benches, process_bench, extract_streets_bench);
+criterion_group!(benches, process_bench, streets_bench);
 criterion_main!(benches);

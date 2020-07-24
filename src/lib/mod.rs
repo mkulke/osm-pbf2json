@@ -1,23 +1,23 @@
-use self::admin::AdminBoundary;
 use self::geo::{get_compound_coordinates, get_geo_info, Bounds, Location};
+use self::items::{AdminBoundary, Street};
 use admin::get_boundaries;
 use filter::{filter, Condition, Group};
 use osmpbfreader::objects::{Node, OsmId, OsmObj, Relation, Tags, Way};
 use osmpbfreader::OsmPbfReader;
-use output::Output;
 use rstar::RTree;
 use serde::{Deserialize, Serialize};
 use serde_json::to_string;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::io::{Read, Seek, Write};
-use streets::get_streets;
+use streets::extract_streets;
 
 mod admin;
 pub mod filter;
 mod geo;
 mod geojson;
-mod output;
+pub mod items;
+pub mod output;
 mod streets;
 
 #[derive(Serialize, Deserialize)]
@@ -176,35 +176,35 @@ fn build_street_group(name: Option<String>) -> Vec<Group> {
 
 pub fn extract_hierarchies(
     file: impl Seek + Read,
-    writer: &mut dyn Write,
-    geo_json: bool,
     levels: Option<Vec<u8>>,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<Vec<AdminBoundary>, Box<dyn Error>> {
     let mut pbf = OsmPbfReader::new(file);
     let default_levels = vec![4, 6, 8, 9, 10];
     let levels = levels.unwrap_or(default_levels);
     let groups = build_admin_group(levels);
     let objs = pbf.get_objs_and_deps(|obj| filter(obj, &groups))?;
     let boundaries = get_boundaries(&objs);
-    if geo_json {
-        boundaries.write_geojson(writer)?;
-    } else {
-        boundaries.write_json_lines(writer)?;
-    }
-    Ok(())
+    Ok(boundaries)
 }
 
-pub fn extract_streets(
+/// Extract a list of streets from a set of OSM Objects
+///
+/// Streets are represented in OSM as a collection of smaller Way segments. To cluster those into distinct street entities `name` Tag and the geographical distance are considered.
+///
+/// # Example
+///
+/// ```
+/// let a = 1;
+/// ```
+pub fn streets(
     file: impl Seek + Read,
-    writer: &mut dyn Write,
-    geo_json: bool,
     name: Option<String>,
     boundary: Option<u8>,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<Vec<Street>, Box<dyn Error>> {
     let mut pbf = OsmPbfReader::new(file);
     let groups = build_street_group(name);
     let objs = pbf.get_objs_and_deps(|obj| filter(obj, &groups))?;
-    let streets = get_streets(&objs);
+    let streets = extract_streets(&objs);
     let streets = {
         match boundary {
             None => streets,
@@ -220,12 +220,7 @@ pub fn extract_streets(
             }
         }
     };
-    if geo_json {
-        streets.write_geojson(writer)?;
-    } else {
-        streets.write_json_lines(writer)?;
-    }
-    Ok(())
+    Ok(streets)
 }
 
 pub fn process(

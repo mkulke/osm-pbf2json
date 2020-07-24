@@ -1,14 +1,9 @@
 use super::geo::BoundaryGeometry;
+use super::items::AdminBoundary;
 use osm_boundaries_utils::build_boundary;
 use osmpbfreader::objects::{OsmId, OsmObj};
 use rstar::{RTreeObject, AABB};
 use std::collections::BTreeMap;
-
-pub struct AdminBoundary {
-    pub name: String,
-    pub admin_level: u8,
-    pub geometry: BoundaryGeometry,
-}
 
 impl RTreeObject for AdminBoundary {
     type Envelope = AABB<[f64; 2]>;
