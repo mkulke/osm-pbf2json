@@ -174,7 +174,23 @@ fn build_street_group(name: Option<String>) -> Vec<Group> {
         .collect()
 }
 
-pub fn extract_hierarchies(
+/// Extract administrative boundaries from OSM
+///
+/// Administrative boundaries are stored in OSM as Relations with the Tag `boundary: administrative` and a `admin_level`. The meaning of the individual levels (state, country, etc.) depends on the respective region (read [here](https://wiki.openstreetmap.org/wiki/Key:admin_level) for details).
+///
+/// The levels can be specified, by default `4, 6, 8, 9, 10` are considered.
+///
+/// # Example
+///
+/// ```
+/// use std::fs::File;
+/// use osm_pbf2json::boundaries;
+///
+/// let file = File::open("./tests/data/alexanderplatz.pbf").unwrap();
+/// let boundaries = boundaries(file, Some(vec![10])).unwrap();
+/// assert_eq!(boundaries.len(), 0);
+/// ```
+pub fn boundaries(
     file: impl Seek + Read,
     levels: Option<Vec<u8>>,
 ) -> Result<Vec<AdminBoundary>, Box<dyn Error>> {
@@ -191,10 +207,20 @@ pub fn extract_hierarchies(
 ///
 /// Streets are represented in OSM as a collection of smaller Way segments. To cluster those into distinct street entities `name` Tag and the geographical distance are considered.
 ///
+/// A `name` can be given to retrieve only streets with a matching name.
+///
+/// Sometimes continuous streets cross boundaries. Streets are split along administrative boundary borders, when specifying a `boundary` option.
+///
 /// # Example
 ///
 /// ```
-/// let a = 1;
+/// use std::fs::File;
+/// use osm_pbf2json::streets;
+///
+/// let file = File::open("./tests/data/alexanderplatz.pbf").unwrap();
+/// let name = String::from("Alexanderstraße");
+/// let streets = streets(file, Some(name), None).unwrap();
+/// assert_eq!(streets.len(), 1);
 /// ```
 pub fn streets(
     file: impl Seek + Read,
