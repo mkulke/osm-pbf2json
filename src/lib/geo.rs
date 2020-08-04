@@ -64,6 +64,21 @@ impl BoundaryGeometry {
     pub fn sw_ne(&self) -> ([f64; 2], [f64; 2]) {
         (self.bounding_box.sw, self.bounding_box.ne)
     }
+
+    pub fn intersects(&self, geometry: &SegmentGeometry) -> bool {
+        self.multi_polygon
+            .0
+            .iter()
+            .any(|polygon| polygon.intersects(&geometry.line_string))
+    }
+
+    pub fn owns(&self, geometry: &SegmentGeometry) -> bool {
+        if let Some(centroid) = geometry.line_string.centroid() {
+            self.multi_polygon.contains(&centroid)
+        } else {
+            false
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

@@ -4,6 +4,7 @@ use super::items::{AdminBoundary, Street};
 use rand::random;
 use serde::{Deserialize, Serialize};
 use serde_json::to_string;
+use std::collections::HashMap;
 use std::error::Error;
 use std::io::Write;
 
@@ -75,6 +76,7 @@ impl Output for Vec<AdminBoundary> {
 struct JSONStreet {
     id: i64,
     name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     boundary: Option<String>,
     length: f64,
     loc: (f64, f64),
@@ -120,14 +122,15 @@ impl Output for Vec<Street> {
                 let g = random::<u8>();
                 let b = random::<u8>();
                 let random_color = format!("#{:02X}{:02X}{:02X}", r, g, b);
+                let mut properties: HashMap<String, String> = HashMap::new();
+                properties.insert("name".into(), street.name.clone());
+                properties.insert("stroke".into(), random_color);
+                if let Some(name) = &street.boundary {
+                    properties.insert("boundary".into(), name.clone());
+                }
                 let entity = Entity::Feature {
                     geometry,
-                    properties: vec![
-                        ("name".into(), street.name.clone()),
-                        ("stroke".into(), random_color),
-                    ]
-                    .into_iter()
-                    .collect(),
+                    properties,
                 };
                 Some(entity)
             })

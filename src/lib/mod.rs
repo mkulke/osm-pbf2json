@@ -19,6 +19,7 @@ mod geojson;
 pub mod items;
 pub mod output;
 mod streets;
+mod test_helpers;
 
 #[derive(Serialize, Deserialize)]
 struct JSONNode {

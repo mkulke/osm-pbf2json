@@ -11,7 +11,7 @@ use rstar::{RTreeObject, AABB};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
-const RTREE_PADDING: f64 = 0.001;
+const RTREE_PADDING: f64 = 0.002;
 
 impl Length for Street {
     fn length(&self) -> f64 {
@@ -21,6 +21,16 @@ impl Length for Street {
             .map(|segment| &segment.geometry)
             .collect();
         geometries.length()
+    }
+}
+
+impl AdminBoundary {
+    pub fn intersects(&self, segment: &Segment) -> bool {
+        self.geometry.intersects(&segment.geometry)
+    }
+
+    pub fn owns(&self, segment: &Segment) -> bool {
+        self.geometry.owns(&segment.geometry)
     }
 }
 
@@ -46,30 +56,45 @@ impl Street {
     fn boundary_matches<'a>(&self, tree: &'a RTree<AdminBoundary>) -> Vec<&'a AdminBoundary> {
         let points: Vec<[f64; 2]> = self.into();
         let aabb = AABB::from_points(&points);
-        tree.locate_in_envelope_intersecting(&aabb).collect()
+        tree.locate_in_envelope_intersecting(&aabb)
+            .filter(|candidate| {
+                self.segments
+                    .iter()
+                    .any(|segment| candidate.intersects(segment))
+            })
+            .collect()
     }
 
-    fn set_boundary(&mut self, name: &str) {
-        self.boundary = Some(name.into());
+    fn group_segments<'a>(
+        segments: Vec<Segment>,
+        boundaries: &[&'a AdminBoundary],
+    ) -> HashMap<&'a str, Vec<Segment>> {
+        segments
+            .into_iter()
+            .filter_map(|segment| {
+                let boundary = boundaries.iter().find(|boundary| boundary.owns(&segment))?;
+                Some((boundary.name.as_str(), segment))
+            })
+            .into_group_map()
     }
 
-    pub fn split_by_boundaries(mut self, tree: &RTree<AdminBoundary>) -> Vec<Self> {
+    fn split_street(self, boundaries: &[&AdminBoundary]) -> Vec<Self> {
+        let street_name = self.name;
+        Self::group_segments(self.segments, boundaries)
+            .into_iter()
+            .map(|(name, segments)| Street {
+                segments,
+                name: street_name.clone(),
+                boundary: Some(name.to_string()),
+            })
+            .collect()
+    }
+
+    pub fn split_by_boundaries(self, tree: &RTree<AdminBoundary>) -> Vec<Self> {
         let matches = self.boundary_matches(tree);
         match matches.len() {
             0 => vec![self],
-            1 => {
-                let boundary = matches[0];
-                self.set_boundary(&boundary.name);
-                return vec![self];
-            }
-            _ => matches
-                .iter()
-                .map(|boundary| {
-                    let mut new_street = self.clone();
-                    new_street.set_boundary(&boundary.name);
-                    new_street
-                })
-                .collect(),
+            _ => self.split_street(&matches),
         }
     }
 }
@@ -226,7 +251,7 @@ impl RTreeObject for Segment {
 }
 
 #[cfg(test)]
-mod get_streets {
+mod tests {
     use super::*;
     use approx::*;
     use osmpbfreader::objects::{Node, NodeId, Tags, Way, WayId};

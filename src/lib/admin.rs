@@ -38,45 +38,10 @@ pub fn get_boundaries(objs: &BTreeMap<OsmId, OsmObj>) -> Vec<AdminBoundary> {
 
 #[cfg(test)]
 mod get_boundaries {
+    use super::super::test_helpers::create_objects;
     use super::*;
-    use osm_boundaries_utils::osm_builder::{named_node, OsmBuilder};
-    use osmpbfreader::objects::{NodeId, OsmObj, Relation, RelationId, WayId};
+    use osmpbfreader::objects::{NodeId, OsmObj, RelationId, WayId};
     use rstar::RTree;
-
-    trait OsmObjExt {
-        fn relation_mut(&mut self) -> Option<&mut Relation>;
-    }
-
-    impl OsmObjExt for OsmObj {
-        fn relation_mut(&mut self) -> Option<&mut Relation> {
-            if let OsmObj::Relation(ref mut rel) = *self {
-                Some(rel)
-            } else {
-                None
-            }
-        }
-    }
-
-    fn create_objects(tags: &[(&str, &str)], offset: f64) -> BTreeMap<OsmId, OsmObj> {
-        let mut builder = OsmBuilder::new();
-        let rel_id = builder
-            .relation()
-            .outer(vec![
-                named_node(offset, 53., "start"),
-                named_node(offset, 52., "1"),
-                named_node(offset + 1., 52., "2"),
-                named_node(offset + 1., 53., "3"),
-                named_node(offset, 53., "start"),
-            ])
-            .relation_id
-            .into();
-        let obj = builder.objects.get_mut(&rel_id).unwrap();
-        let rel = obj.relation_mut().unwrap();
-        for (key, value) in tags {
-            rel.tags.insert((*key).into(), (*value).into());
-        }
-        builder.objects
-    }
 
     fn bump_ids(objs: BTreeMap<OsmId, OsmObj>) -> BTreeMap<OsmId, OsmObj> {
         objs.into_iter()
@@ -112,6 +77,15 @@ mod get_boundaries {
             .collect()
     }
 
+    fn build_coordinates(offset: f64) -> Vec<[f64; 2]> {
+        vec![
+            [offset, 52.],
+            [offset + 1., 52.],
+            [offset + 1., 53.],
+            [offset, 53.],
+        ]
+    }
+
     #[test]
     fn geometry() {
         let tags = vec![
@@ -119,7 +93,8 @@ mod get_boundaries {
             ("name", "some_name"),
             ("admin_level", "11"),
         ];
-        let objects = create_objects(&tags, 13.);
+        let coordinates = build_coordinates(13.);
+        let objects = create_objects(&tags, &coordinates);
 
         let boundary = get_boundaries(&objects).pop().unwrap();
         let coordinates = boundary.geometry.coordinates();
@@ -135,7 +110,9 @@ mod get_boundaries {
             ("name", "some_name"),
             ("admin_level", "11"),
         ];
-        let objects = create_objects(&tags, 13.);
+        let coordinates = build_coordinates(13.);
+        let objects = create_objects(&tags, &coordinates);
+
         let boundaries = get_boundaries(&objects);
         assert_eq!(boundaries.len(), 1);
     }
@@ -147,7 +124,9 @@ mod get_boundaries {
             ("name", "some_name"),
             ("admin_level", "11"),
         ];
-        let objects = create_objects(&tags, 13.);
+        let coordinates = build_coordinates(13.);
+        let objects = create_objects(&tags, &coordinates);
+
         let boundaries = get_boundaries(&objects);
         assert_eq!(boundaries.len(), 0);
     }
@@ -159,7 +138,9 @@ mod get_boundaries {
             ("name", "some_name"),
             ("admin_level", "11"),
         ];
-        let objects = create_objects(&tags, 13.);
+        let coordinates = build_coordinates(13.);
+        let objects = create_objects(&tags, &coordinates);
+
         let boundaries = get_boundaries(&objects);
         let tree = RTree::<AdminBoundary>::bulk_load(boundaries);
         let aabb = AABB::from_points(&vec![[13.25, 52.5], [13.74, 52.5]]);
@@ -174,7 +155,9 @@ mod get_boundaries {
             ("name", "some_name"),
             ("admin_level", "11"),
         ];
-        let objects = create_objects(&tags, 13.);
+        let coordinates = build_coordinates(13.);
+        let objects = create_objects(&tags, &coordinates);
+
         let boundaries = get_boundaries(&objects);
         let tree = RTree::<AdminBoundary>::bulk_load(boundaries);
         let aabb = AABB::from_points(&vec![[12.75, 52.5], [13.25, 52.5]]);
@@ -189,7 +172,9 @@ mod get_boundaries {
             ("name", "some_name"),
             ("admin_level", "11"),
         ];
-        let objects = create_objects(&tags, 13.);
+        let coordinates = build_coordinates(13.);
+        let objects = create_objects(&tags, &coordinates);
+
         let boundaries = get_boundaries(&objects);
         let tree = RTree::<AdminBoundary>::bulk_load(boundaries);
         let aabb = AABB::from_points(&vec![[12.25, 52.5], [12.75, 52.5]]);
@@ -204,8 +189,11 @@ mod get_boundaries {
             ("name", "some_name"),
             ("admin_level", "11"),
         ];
-        let mut objects_1 = create_objects(&tags, 13.);
-        let objects_2 = bump_ids(create_objects(&tags, 12.));
+        let coordinates = build_coordinates(13.);
+        let mut objects_1 = create_objects(&tags, &coordinates);
+
+        let coordinates = build_coordinates(12.);
+        let objects_2 = bump_ids(create_objects(&tags, &coordinates));
         objects_1.extend(objects_2);
         let boundaries = get_boundaries(&objects_1);
         assert_eq!(boundaries.len(), 2);
