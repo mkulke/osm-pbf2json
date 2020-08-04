@@ -253,19 +253,6 @@ pub trait Midpoint {
     fn midpoint(&self) -> Option<(f64, f64)>;
 }
 
-fn get_closest_element<T: Into<Point<f64>> + Copy>(
-    elements: impl IntoIterator<Item = T>,
-    point: Point<f64>,
-) -> Option<T> {
-    elements.into_iter().min_by(|a, b| {
-        let a_point: Point<f64> = (*a).into();
-        let a_dis: f64 = point.euclidean_distance(&a_point);
-        let b_point: Point<f64> = (*b).into();
-        let b_dis: f64 = point.euclidean_distance(&b_point);
-        a_dis.partial_cmp(&b_dis).unwrap()
-    })
-}
-
 impl Midpoint for Vec<&SegmentGeometry> {
     fn midpoint(&self) -> Option<(f64, f64)> {
         let flattened: Vec<_> = self
@@ -329,20 +316,12 @@ fn get_bounds(geometry: &Geometry<f64>) -> Option<Bounds> {
 
 pub trait Centerable {
     fn get_centroid(&self) -> Option<Location>;
-    fn get_middle(&self) -> Option<Location>;
 }
 
 impl Centerable for Vec<(f64, f64)> {
     fn get_centroid(&self) -> Option<Location> {
         let geometry = get_geometry(self.clone())?;
         geometry.get_centroid()
-    }
-
-    fn get_middle(&self) -> Option<Location> {
-        let line_string: LineString<f64> = self.clone().try_into().ok()?;
-        let centroid = line_string.centroid()?;
-        let closest_element = get_closest_element(line_string, centroid)?;
-        Some(closest_element.into())
     }
 }
 
@@ -354,13 +333,6 @@ impl Centerable for Geometry<f64> {
             _ => None,
         }?;
         Some(point.into())
-    }
-
-    fn get_middle(&self) -> Option<Location> {
-        let multi_points: MultiPoint<f64> = self.clone().try_into().ok()?;
-        let centroid = multi_points.centroid()?;
-        let closest_element = get_closest_element(multi_points, centroid)?;
-        Some(closest_element.into())
     }
 }
 
@@ -402,16 +374,6 @@ mod tests {
         //
         // 0
         approx_eq([9.25, 50.75], coordinates.get_centroid());
-    }
-
-    #[test]
-    fn get_middle_for_line() {
-        let coordinates = vec![(9., 50.), (9., 51.), (10., 51.)];
-        // 1/m    2
-        //
-        //
-        // 0
-        approx_eq([9., 51.], coordinates.get_middle());
     }
 
     #[test]
