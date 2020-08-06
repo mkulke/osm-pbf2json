@@ -326,6 +326,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "geojson"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da98686bca3298df46f3957c78166cfbf0fa399e9efcdac0cb7ff2cfed1fd2ab"
+dependencies = [
+ "num-traits",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "getrandom"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -498,12 +509,13 @@ dependencies = [
 
 [[package]]
 name = "osm_pbf2json"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "approx",
  "criterion",
  "geo",
  "geo-types",
+ "geojson",
  "itertools",
  "osm_boundaries_utils",
  "osmpbfreader",

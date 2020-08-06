@@ -1,5 +1,6 @@
 extern crate osm_pbf2json;
 
+use geojson::GeoJson;
 use osm_pbf2json::output::Output;
 use osm_pbf2json::{boundaries, filter, objects, streets};
 use std::fs::File;
@@ -43,6 +44,21 @@ fn find_bike_parking_for_six() {
 }
 
 #[test]
+fn streets_as_geojson() {
+    let mut cursor = Cursor::new(Vec::new());
+    let file = File::open("./tests/data/alexanderplatz.pbf").unwrap();
+    let streets = streets(file, Some("Alexanderstraße"), None).unwrap();
+    streets.write_geojson(&mut cursor).unwrap();
+    let geojson_str = get_string(&mut cursor);
+    let geojson = geojson_str.parse::<GeoJson>().unwrap();
+    if let GeoJson::FeatureCollection(col) = geojson {
+        assert_eq!(col.features.len(), 1);
+    } else {
+        panic!("not a feature collection");
+    }
+}
+
+#[test]
 fn rosa_luxemburg_street() {
     let mut cursor = Cursor::new(Vec::new());
     let name = "Rosa-Luxemburg-Straße";
@@ -70,6 +86,21 @@ fn split_street_by_boundary() {
     assert!(lines[0].contains("Kreuzberg"));
     assert!(lines[1].contains("Wilhelmstraße"));
     assert!(lines[1].contains("Mitte"));
+}
+
+#[test]
+fn boundary_as_geojson() {
+    let mut cursor = Cursor::new(Vec::new());
+    let file = File::open("./tests/data/wilhelmstrasse.pbf").unwrap();
+    let boundaries = boundaries(file, Some(vec![10])).unwrap();
+    boundaries.write_geojson(&mut cursor).unwrap();
+    let geojson_str = get_string(&mut cursor);
+    let geojson = geojson_str.parse::<GeoJson>().unwrap();
+    if let GeoJson::FeatureCollection(col) = geojson {
+        assert_eq!(col.features.len(), 2);
+    } else {
+        panic!("not a feature collection");
+    }
 }
 
 #[test]
