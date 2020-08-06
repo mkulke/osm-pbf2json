@@ -9,6 +9,7 @@ repository = "https://github.com/mkulke/osm-pbf2json"
 license = "MIT"
 keywords = ["osm", "openstreetmap", "geo", "pbf"]
 categories = ["command-line-utilities", "encoding", "parsing", "science"]
+description = "A parser/filter/processor for OSM protobuf bundles"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
