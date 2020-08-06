@@ -52,7 +52,7 @@ A clipped PBF sample is contained in the `./tests/data` folder.
 
 ### Extract Streets
 
-Streets are represented in OSM as a collection of smaller road segments. To group those segments into street entities a few heuristics are employed, specifically the name tag and the geographical distance.
+Streets are represented in OSM as a collection of smaller road segments. To group those segments into street entities a few heuristics are employed, specifically the name tag and the geographical distance. A boundary level can be specified to split a street along boundary lines.
 
 ```
 ./target/release/osm_pbf2json streets --geojson -n="Gontardstraße" tests/data/alexanderplatz.pbf

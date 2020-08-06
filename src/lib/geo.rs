@@ -288,8 +288,8 @@ impl From<&Bounds> for (Location, Location) {
     }
 }
 
-fn get_geometry(coordinates: Vec<(f64, f64)>) -> Option<Geometry<f64>> {
-    let line_string: LineString<f64> = coordinates.into();
+fn get_geometry(coordinates: &[(f64, f64)]) -> Option<Geometry<f64>> {
+    let line_string: LineString<f64> = coordinates.to_vec().into();
     let first = line_string.points_iter().next()?;
     let last = line_string.points_iter().last()?;
     if first == last {
@@ -320,7 +320,7 @@ pub trait Centerable {
 
 impl Centerable for Vec<(f64, f64)> {
     fn get_centroid(&self) -> Option<Location> {
-        let geometry = get_geometry(self.clone())?;
+        let geometry = get_geometry(self)?;
         geometry.get_centroid()
     }
 }
@@ -336,7 +336,7 @@ impl Centerable for Geometry<f64> {
     }
 }
 
-pub fn get_geo_info(coordinates: Vec<(f64, f64)>) -> (Option<Location>, Option<Bounds>) {
+pub fn get_geo_info(coordinates: &[(f64, f64)]) -> (Option<Location>, Option<Bounds>) {
     if let Some(geo) = get_geometry(coordinates) {
         let centroid = geo.get_centroid();
         let bounds = get_bounds(&geo);
@@ -395,7 +395,7 @@ mod tests {
     #[test]
     fn get_geo_info_open() {
         let coordinates = vec![(5., 49.), (6., 50.), (7., 49.)];
-        let (centroid, bounds) = get_geo_info(coordinates);
+        let (centroid, bounds) = get_geo_info(&coordinates);
         let reference_loc = Location { lat: 49.5, lon: 6. };
         assert_eq!(centroid.unwrap(), reference_loc);
         let reference_bounds = Bounds {
@@ -410,7 +410,7 @@ mod tests {
     #[test]
     fn get_geo_info_closed() {
         let coordinates = vec![(5., 49.), (6., 50.), (7., 49.), (5., 49.)];
-        let (centroid, bounds) = get_geo_info(coordinates);
+        let (centroid, bounds) = get_geo_info(&coordinates);
         let reference_loc = Location {
             lat: 49.333_333,
             lon: 6.,

@@ -513,6 +513,7 @@ dependencies = [
  "rstar",
  "serde",
  "serde_json",
+ "smartstring",
  "structopt",
 ]
 

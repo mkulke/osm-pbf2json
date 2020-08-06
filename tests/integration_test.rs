@@ -1,7 +1,7 @@
 extern crate osm_pbf2json;
 
 use osm_pbf2json::output::Output;
-use osm_pbf2json::{boundaries, filter, process, streets};
+use osm_pbf2json::{boundaries, filter, objects, streets};
 use std::fs::File;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 
@@ -15,10 +15,10 @@ fn get_string(cursor: &mut Cursor<Vec<u8>>) -> String {
 #[test]
 fn find_fountains_or_townhalls() {
     let mut cursor = Cursor::new(Vec::new());
-    let groups = filter::parse("amenity~fountain+tourism,amenity~townhall".to_string());
+    let groups = filter::parse("amenity~fountain+tourism,amenity~townhall");
     let file = File::open("./tests/data/alexanderplatz.pbf").unwrap();
-    process(file, &mut cursor, &groups).unwrap();
-
+    let objects = objects(file, &groups).unwrap();
+    objects.write_json_lines(&mut cursor).unwrap();
     let string = get_string(&mut cursor);
     let lines: Vec<&str> = string.trim().split('\n').collect();
     assert_eq!(lines.len(), 4);
@@ -33,10 +33,10 @@ fn find_fountains_or_townhalls() {
 #[test]
 fn find_bike_parking_for_six() {
     let mut cursor = Cursor::new(Vec::new());
-    let groups = filter::parse("amenity~bicycle_parking+capacity~6".to_string());
+    let groups = filter::parse("amenity~bicycle_parking+capacity~6");
     let file = File::open("./tests/data/alexanderplatz.pbf").unwrap();
-    process(file, &mut cursor, &groups).unwrap();
-
+    let objects = objects(file, &groups).unwrap();
+    objects.write_json_lines(&mut cursor).unwrap();
     let string = get_string(&mut cursor);
     let lines: Vec<&str> = string.trim().split('\n').collect();
     assert_eq!(lines.len(), 14);
@@ -45,7 +45,7 @@ fn find_bike_parking_for_six() {
 #[test]
 fn rosa_luxemburg_street() {
     let mut cursor = Cursor::new(Vec::new());
-    let name = "Rosa-Luxemburg-Straße".to_string();
+    let name = "Rosa-Luxemburg-Straße";
     let file = File::open("./tests/data/alexanderplatz.pbf").unwrap();
     let streets = streets(file, Some(name), None).unwrap();
     streets.write_json_lines(&mut cursor).unwrap();
@@ -58,7 +58,7 @@ fn rosa_luxemburg_street() {
 #[test]
 fn split_street_by_boundary() {
     let mut cursor = Cursor::new(Vec::new());
-    let name = "Wilhelmstraße".to_string();
+    let name = "Wilhelmstraße";
     let file = File::open("./tests/data/wilhelmstrasse.pbf").unwrap();
     let streets = streets(file, Some(name), Some(10)).unwrap();
     streets.write_json_lines(&mut cursor).unwrap();
