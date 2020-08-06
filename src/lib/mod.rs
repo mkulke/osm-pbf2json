@@ -1,56 +1,31 @@
-use self::geo::{get_compound_coordinates, get_geo_info, Bounds, Location};
-use filter::{filter, Condition, Group};
-use osmpbfreader::objects::{Node, OsmId, OsmObj, Relation, Tags, Way};
+//! A parser/filter for OSM protobuf bundles.
+
+use self::geo::get_compound_coordinates;
+use self::items::{osm, AdminBoundary, Object, Street};
+use admin::get_boundaries;
+use filter::{Condition, Filter, Group};
+use osmpbfreader::objects::{OsmId, OsmObj, Relation, Way};
 use osmpbfreader::OsmPbfReader;
-use serde::{Deserialize, Serialize};
-use serde_json::to_string;
+use rstar::RTree;
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::io::{Read, Seek, Write};
-use streets::{get_streets, OutputExt};
+use std::io::{Read, Seek};
+use streets::extract_streets;
 
+mod admin;
 pub mod filter;
 mod geo;
+mod geojson;
+pub mod items;
+pub mod output;
 mod streets;
+mod test_helpers;
 
-#[derive(Serialize, Deserialize)]
-struct JSONNode {
-    id: i64,
-    #[serde(rename = "type")]
-    osm_type: &'static str,
-    lat: f64,
-    lon: f64,
-    tags: Tags,
-}
-
-#[derive(Serialize, Deserialize)]
-struct JSONWay {
-    id: i64,
-    #[serde(rename = "type")]
-    osm_type: &'static str,
-    tags: Tags,
-    centroid: Option<Location>,
-    bounds: Option<Bounds>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct JSONRelation {
-    id: i64,
-    #[serde(rename = "type")]
-    osm_type: &'static str,
-    tags: Tags,
-    centroid: Option<Location>,
-    bounds: Option<Bounds>,
-}
-
-type SerdeResult = Result<String, serde_json::error::Error>;
-
-trait SerializeParent {
+trait OsmExt {
     fn get_coordinates(&self, objs: &BTreeMap<OsmId, OsmObj>) -> Vec<(f64, f64)>;
-    fn to_json_string(&self, objs: &BTreeMap<OsmId, OsmObj>) -> SerdeResult;
 }
 
-impl SerializeParent for Way {
+impl OsmExt for Way {
     fn get_coordinates(&self, objs: &BTreeMap<OsmId, OsmObj>) -> Vec<(f64, f64)> {
         self.nodes
             .iter()
@@ -61,22 +36,9 @@ impl SerializeParent for Way {
             })
             .collect()
     }
-
-    fn to_json_string(&self, objs: &BTreeMap<OsmId, OsmObj>) -> SerdeResult {
-        let coordinates = self.get_coordinates(&objs);
-        let (centroid, bounds) = get_geo_info(coordinates);
-        let jw = JSONWay {
-            osm_type: "way",
-            id: self.id.0,
-            tags: self.tags.to_owned(),
-            centroid,
-            bounds,
-        };
-        to_string(&jw)
-    }
 }
 
-impl SerializeParent for Relation {
+impl OsmExt for Relation {
     fn get_coordinates(&self, objs: &BTreeMap<OsmId, OsmObj>) -> Vec<(f64, f64)> {
         let coordinates = self
             .refs
@@ -94,41 +56,21 @@ impl SerializeParent for Relation {
             .collect();
         get_compound_coordinates(coordinates)
     }
-
-    fn to_json_string(&self, objs: &BTreeMap<OsmId, OsmObj>) -> SerdeResult {
-        let coordinates = self.get_coordinates(&objs);
-        let (centroid, bounds) = get_geo_info(coordinates);
-        let jr = JSONRelation {
-            osm_type: "relation",
-            id: self.id.0,
-            tags: self.tags.to_owned(),
-            centroid,
-            bounds,
-        };
-        to_string(&jr)
-    }
 }
 
-trait SerializeNode {
-    fn to_json_string(&self) -> SerdeResult;
+fn build_admin_group(levels: Vec<u8>) -> Vec<Group> {
+    levels
+        .iter()
+        .map(|level| {
+            let level_match = Condition::new("admin_level", Some(&level.to_string()));
+            let boundary_match = Condition::new("boundary", Some("administrative"));
+            let conditions = vec![boundary_match, level_match];
+            Group { conditions }
+        })
+        .collect()
 }
 
-impl SerializeNode for Node {
-    fn to_json_string(&self) -> SerdeResult {
-        let jn = JSONNode {
-            osm_type: "node",
-            id: self.id.0,
-            lat: self.lat(),
-            lon: self.lon(),
-            tags: self.tags.to_owned(),
-        };
-        to_string(&jn)
-    }
-}
-
-fn build_street_group(name: Option<String>) -> Vec<Group> {
-    use Condition::*;
-
+fn build_street_group(name: Option<&str>) -> Vec<Group> {
     let values = vec![
         "primary",
         "secondary",
@@ -139,61 +81,142 @@ fn build_street_group(name: Option<String>) -> Vec<Group> {
         "pedestrian",
     ];
 
-    let name_condition = match name {
-        Some(name) => ValueMatch("name".to_string(), name),
-        None => TagPresence("name".to_string()),
-    };
-
+    let name_condition = Condition::new("name", name);
     values
         .into_iter()
         .map(|val| {
-            let highway_match = ValueMatch("highway".to_string(), val.to_string());
+            let highway_match = Condition::new("highway", Some(val));
             let conditions = vec![highway_match, name_condition.clone()];
             Group { conditions }
         })
         .collect()
 }
 
-pub fn extract_streets(
+/// Extract administrative boundaries from OSM
+///
+/// Administrative boundaries are stored in OSM as Relations with the Tag `boundary: administrative` and a `admin_level`. The meaning of the individual levels (state, country, etc.) depends on the respective region (read [here](https://wiki.openstreetmap.org/wiki/Key:admin_level) for details).
+///
+/// The levels can be specified, by default `4, 6, 8, 9, 10` are considered.
+///
+/// # Example
+///
+/// ```
+/// use std::fs::File;
+/// use osm_pbf2json::boundaries;
+///
+/// let file = File::open("./tests/data/wilhelmstrasse.pbf").unwrap();
+/// let boundaries = boundaries(file, Some(vec![10])).unwrap();
+/// assert_eq!(boundaries.len(), 2);
+/// ```
+pub fn boundaries(
     file: impl Seek + Read,
-    writer: &mut dyn Write,
-    geo_json: bool,
-    name: Option<String>,
-) -> Result<(), Box<dyn Error>> {
+    levels: Option<Vec<u8>>,
+) -> Result<Vec<AdminBoundary>, Box<dyn Error>> {
     let mut pbf = OsmPbfReader::new(file);
-    let groups = build_street_group(name);
-    let objs = pbf.get_objs_and_deps(|obj| filter(obj, &groups))?;
-    let streets = get_streets(&objs);
-    if geo_json {
-        let geojson = streets.to_geojson()?;
-        writeln!(writer, "{}", geojson)?;
-    } else {
-        streets.write_json_lines(writer)?;
-    }
-    Ok(())
+    let default_levels = vec![4, 6, 8, 9, 10];
+    let levels = levels.unwrap_or(default_levels);
+    let groups = build_admin_group(levels);
+    let objs = pbf.get_objs_and_deps(|obj| obj.filter(&groups))?;
+    let boundaries = get_boundaries(&objs);
+    Ok(boundaries)
 }
 
-pub fn process(
+/// Extract a list of streets from a set of OSM Objects
+///
+/// Streets are represented in OSM as a collection of smaller Way segments. To cluster those into distinct street entities `name` Tag and the geographical distance are considered.
+///
+/// A `name` can be given to retrieve only streets with a matching name.
+///
+/// Sometimes continuous streets cross boundaries. Streets are split along administrative boundary borders, when specifying a `boundary` option.
+///
+/// # Example
+///
+/// ```
+/// use std::fs::File;
+/// use osm_pbf2json::streets;
+///
+/// let file = File::open("./tests/data/wilhelmstrasse.pbf").unwrap();
+/// let name = "Wilhelmstraße";
+/// let streets = streets(file, Some(name), Some(10)).unwrap();
+/// assert_eq!(streets.len(), 2);
+/// ```
+pub fn streets(
     file: impl Seek + Read,
-    writer: &mut dyn Write,
-    groups: &[Group],
-) -> Result<(), Box<dyn Error>> {
+    name: Option<&str>,
+    boundary: Option<u8>,
+) -> Result<Vec<Street>, Box<dyn Error>> {
     let mut pbf = OsmPbfReader::new(file);
-    let objs = pbf.get_objs_and_deps(|obj| filter(obj, groups))?;
-
-    for obj in objs.values() {
-        if !filter(&obj, groups) {
-            continue;
+    let groups = build_street_group(name);
+    let objs = pbf.get_objs_and_deps(|obj| obj.filter(&groups))?;
+    let streets = extract_streets(&objs);
+    let streets = {
+        match boundary {
+            None => streets,
+            Some(level) => {
+                let groups = build_admin_group(vec![level]);
+                let objs = pbf.get_objs_and_deps(|obj| obj.filter(&groups))?;
+                let boundaries = get_boundaries(&objs);
+                let tree = RTree::<AdminBoundary>::bulk_load(boundaries);
+                streets
+                    .into_iter()
+                    .flat_map(|street| street.split_by_boundaries(&tree))
+                    .collect()
+            }
         }
+    };
+    Ok(streets)
+}
 
-        let json_str = match obj {
-            OsmObj::Node(node) => node.to_json_string(),
-            OsmObj::Way(way) => way.to_json_string(&objs),
-            OsmObj::Relation(relation) => relation.to_json_string(&objs),
-        }?;
-        writeln!(writer, "{}", json_str)?;
-    }
-    Ok(())
+/// Extract Objects from OSM
+///
+/// Objects (i.e. Nodes, Ways & Relations) will be extracted according to filter options. Some geographic properties (centroid, bounding boxes) are computed for all entities.
+///
+/// Filtering `groups` can be applied to select objects according to their tags.
+///
+/// # Example
+///
+/// ```
+/// use std::fs::File;
+/// use osm_pbf2json::objects;
+/// use osm_pbf2json::filter::{Condition, Group};
+///
+/// let file = File::open("./tests/data/alexanderplatz.pbf").unwrap();
+/// let cond_1 = Condition::new("surface", Some("cobblestone"));
+/// let cond_2 = Condition::new("highway", None);
+/// let group = Group { conditions: vec![cond_1, cond_2] };
+/// let cobblestone_ways = objects(file, &vec![group]).unwrap();
+/// assert_eq!(cobblestone_ways.len(), 4);
+/// ```
+pub fn objects(file: impl Seek + Read, groups: &[Group]) -> Result<Vec<Object>, Box<dyn Error>> {
+    let mut pbf = OsmPbfReader::new(file);
+    let objs = pbf.get_objs_and_deps(|obj| obj.filter(groups))?;
+
+    let objects = objs
+        .values()
+        .filter_map(|obj| {
+            if !obj.filter(groups) {
+                return None;
+            }
+            let object = match obj {
+                OsmObj::Node(obj) => {
+                    let node = osm::Node::new(obj.id.0, obj.lat(), obj.lon(), obj.tags.clone());
+                    Object::Node(node)
+                }
+                OsmObj::Way(obj) => {
+                    let coordinates = obj.get_coordinates(&objs);
+                    let way = osm::Way::new(obj.id.0, obj.tags.clone(), &coordinates);
+                    Object::Way(way)
+                }
+                OsmObj::Relation(obj) => {
+                    let coordinates = obj.get_coordinates(&objs);
+                    let relation = osm::Relation::new(obj.id.0, obj.tags.clone(), &coordinates);
+                    Object::Relation(relation)
+                }
+            };
+            Some(object)
+        })
+        .collect();
+    Ok(objects)
 }
 
 #[cfg(test)]
@@ -241,7 +264,7 @@ mod get_coordinates {
         ids.into_iter()
             .map(|id| Ref {
                 member: id,
-                role: "something".to_string(),
+                role: "something".into(),
             })
             .collect()
     }

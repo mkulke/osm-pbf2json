@@ -1,108 +1,17 @@
 use super::geo::{Length, Midpoint, SegmentGeometry};
+use super::items::AdminBoundary;
+use super::items::{Segment, Street};
 use itertools::Itertools;
-use osmpbfreader::objects::{OsmId, OsmObj, Way, WayId};
+use osmpbfreader::objects::{OsmId, OsmObj, Way};
 use petgraph::algo::kosaraju_scc;
 use petgraph::graph::UnGraph;
-use rand::random;
 use rayon::prelude::*;
 use rstar::RTree;
 use rstar::{RTreeObject, AABB};
-use serde::{Deserialize, Serialize};
-use serde_json::to_string;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::error::Error;
 use std::hash::{Hash, Hasher};
-use std::io::Write;
 
-const RTREE_PADDING: f64 = 0.001;
-
-#[derive(Serialize, Deserialize)]
-struct JSONStreet {
-    id: i64,
-    name: String,
-    length: f64,
-    loc: (f64, f64),
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(tag = "type")]
-enum Geometry {
-    MultiLineString { coordinates: Vec<Vec<(f64, f64)>> },
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(tag = "type")]
-enum Entity {
-    Feature {
-        properties: HashMap<String, String>,
-        geometry: Geometry,
-    },
-    FeatureCollection {
-        features: Vec<Entity>,
-    },
-}
-
-pub trait OutputExt {
-    fn to_geojson(&self) -> Result<String, Box<dyn Error>>;
-    fn write_json_lines(self, writer: &mut dyn Write) -> Result<(), Box<dyn Error>>;
-}
-
-impl OutputExt for Vec<Street> {
-    fn write_json_lines(self, writer: &mut dyn Write) -> Result<(), Box<dyn Error>> {
-        for street in self.iter() {
-            let id = street.id();
-            let loc = street.middle().ok_or("could not calculate middle")?;
-            let name = street.name.clone();
-            let length = street.length();
-            let json_street = JSONStreet {
-                id,
-                name,
-                length,
-                loc,
-            };
-            let json = to_string(&json_street)?;
-            writeln!(writer, "{}", json)?;
-        }
-        Ok(())
-    }
-
-    fn to_geojson(&self) -> Result<String, Box<dyn Error>> {
-        let features = self
-            .iter()
-            .filter_map(|street| {
-                let geometries: Vec<_> = street
-                    .segments
-                    .iter()
-                    .filter(|segment| segment.geometry.len() >= 2)
-                    .map(|segment| segment.geometry.clone())
-                    .collect();
-                if geometries.is_empty() {
-                    return None;
-                }
-                let coordinates = geometries.iter().map(|g| g.into()).collect();
-                let geometry = Geometry::MultiLineString { coordinates };
-                let r = random::<u8>();
-                let g = random::<u8>();
-                let b = random::<u8>();
-                let random_color = format!("#{:02X}{:02X}{:02X}", r, g, b);
-                let entity = Entity::Feature {
-                    geometry,
-                    properties: vec![
-                        ("name".to_string(), street.name.clone()),
-                        ("stroke".to_string(), random_color),
-                    ]
-                    .into_iter()
-                    .collect(),
-                };
-                Some(entity)
-            })
-            .collect();
-
-        let feature_collection = Entity::FeatureCollection { features };
-        let string = to_string(&feature_collection)?;
-        Ok(string)
-    }
-}
+const RTREE_PADDING: f64 = 0.002;
 
 impl Length for Street {
     fn length(&self) -> f64 {
@@ -115,23 +24,78 @@ impl Length for Street {
     }
 }
 
+impl AdminBoundary {
+    pub fn intersects(&self, segment: &Segment) -> bool {
+        self.geometry.intersects(&segment.geometry)
+    }
+
+    pub fn owns(&self, segment: &Segment) -> bool {
+        self.geometry.owns(&segment.geometry)
+    }
+}
+
 impl Street {
-    fn id(&self) -> i64 {
-        let ids: Vec<WayId> = self.segments.iter().map(|segment| segment.way_id).collect();
+    pub fn id(&self) -> i64 {
+        let ids: Vec<i64> = self.segments.iter().map(|segment| segment.way_id).collect();
         let mut hash = 0;
         for id in ids.iter() {
-            hash ^= id.0;
+            hash ^= id;
         }
         hash
     }
 
-    fn middle(&self) -> Option<(f64, f64)> {
+    pub fn middle(&self) -> Option<(f64, f64)> {
         let geometries: Vec<&SegmentGeometry> = self
             .segments
             .iter()
             .map(|segment| &segment.geometry)
             .collect();
         geometries.midpoint()
+    }
+
+    fn boundary_matches<'a>(&self, tree: &'a RTree<AdminBoundary>) -> Vec<&'a AdminBoundary> {
+        let points: Vec<[f64; 2]> = self.into();
+        let aabb = AABB::from_points(&points);
+        tree.locate_in_envelope_intersecting(&aabb)
+            .filter(|candidate| {
+                self.segments
+                    .iter()
+                    .any(|segment| candidate.intersects(segment))
+            })
+            .collect()
+    }
+
+    fn group_segments<'a>(
+        segments: Vec<Segment>,
+        boundaries: &[&'a AdminBoundary],
+    ) -> HashMap<&'a str, Vec<Segment>> {
+        segments
+            .into_iter()
+            .filter_map(|segment| {
+                let boundary = boundaries.iter().find(|boundary| boundary.owns(&segment))?;
+                Some((boundary.name.as_str(), segment))
+            })
+            .into_group_map()
+    }
+
+    fn split_street(self, boundaries: &[&AdminBoundary]) -> Vec<Self> {
+        let street_name = self.name;
+        Self::group_segments(self.segments, boundaries)
+            .into_iter()
+            .map(|(name, segments)| Street {
+                segments,
+                name: street_name.clone(),
+                boundary: Some(name.to_string()),
+            })
+            .collect()
+    }
+
+    pub fn split_by_boundaries(self, tree: &RTree<AdminBoundary>) -> Vec<Self> {
+        let matches = self.boundary_matches(tree);
+        match matches.len() {
+            0 => vec![self],
+            _ => self.split_street(&matches),
+        }
     }
 }
 
@@ -196,17 +160,17 @@ fn get_clusters(segments: Vec<Segment>) -> Vec<Vec<Segment>> {
         .collect()
 }
 
-fn get_name_groups(objs: &BTreeMap<OsmId, OsmObj>) -> HashMap<&String, Vec<&Way>> {
+fn get_name_groups(objs: &BTreeMap<OsmId, OsmObj>) -> HashMap<&str, Vec<&Way>> {
     objs.values()
         .filter_map(|obj| {
             let way = obj.way()?;
-            let name = way.tags.get("name")?;
+            let name: &str = way.tags.get("name")?;
             Some((name, way))
         })
         .into_group_map()
 }
 
-pub fn get_streets(objs: &BTreeMap<OsmId, OsmObj>) -> Vec<Street> {
+pub fn extract_streets(objs: &BTreeMap<OsmId, OsmObj>) -> Vec<Street> {
     get_name_groups(objs)
         .into_par_iter()
         .flat_map(|(name, ways)| {
@@ -215,19 +179,14 @@ pub fn get_streets(objs: &BTreeMap<OsmId, OsmObj>) -> Vec<Street> {
             let streets: Vec<Street> = clusters
                 .iter()
                 .map(|segments| Street {
-                    name: name.clone(),
+                    name: (*name).into(),
                     segments: segments.to_vec(),
+                    boundary: None,
                 })
                 .collect();
             streets
         })
         .collect()
-}
-
-#[derive(Debug)]
-pub struct Street {
-    name: String,
-    segments: Vec<Segment>,
 }
 
 impl From<&Street> for Vec<Vec<(f64, f64)>> {
@@ -240,10 +199,21 @@ impl From<&Street> for Vec<Vec<(f64, f64)>> {
     }
 }
 
-#[derive(Clone, Debug)]
-struct Segment {
-    way_id: WayId,
-    geometry: SegmentGeometry,
+impl From<&Street> for Vec<[f64; 2]> {
+    fn from(street: &Street) -> Self {
+        street
+            .segments
+            .iter()
+            .flat_map(|segment| {
+                let tuples: Vec<(f64, f64)> = segment.geometry.clone().into();
+                let coordinates: Vec<[f64; 2]> = tuples
+                    .iter()
+                    .map(|coordinate| [coordinate.0, coordinate.1])
+                    .collect();
+                coordinates
+            })
+            .collect()
+    }
 }
 
 impl Hash for Segment {
@@ -262,7 +232,7 @@ impl Eq for Segment {}
 
 impl Segment {
     fn new(way: &Way, objs: &BTreeMap<OsmId, OsmObj>) -> Result<Self, &'static str> {
-        let way_id = way.id;
+        let way_id = way.id.0;
         let coordinates =
             get_coordinates(way, objs).ok_or("could not construct coordinates for way")?;
         let geometry = SegmentGeometry::new(coordinates)?;
@@ -281,7 +251,7 @@ impl RTreeObject for Segment {
 }
 
 #[cfg(test)]
-mod get_streets {
+mod tests {
     use super::*;
     use approx::*;
     use osmpbfreader::objects::{Node, NodeId, Tags, Way, WayId};
@@ -289,7 +259,7 @@ mod get_streets {
 
     fn add_way(id: WayId, name: &str, nodes: Vec<NodeId>, objs: &mut BTreeMap<OsmId, OsmObj>) {
         let mut tags = Tags::new();
-        tags.insert("name".to_string(), name.to_string());
+        tags.insert("name".into(), name.into());
         let way = Way { id, tags, nodes };
         objs.insert(id.into(), way.into());
     }
@@ -324,7 +294,7 @@ mod get_streets {
         let node_ids = vec![NodeId(3), NodeId(4)];
         add_way(WayId(43), "street a", node_ids, &mut objs);
 
-        let streets = get_streets(&objs);
+        let streets = extract_streets(&objs);
         assert_eq!(streets.len(), 1);
 
         let street = &streets[0];
@@ -352,7 +322,7 @@ mod get_streets {
         let node_ids = vec![NodeId(2), NodeId(3)];
         add_way(WayId(41), "street b", node_ids, &mut objs);
 
-        let streets = get_streets(&objs);
+        let streets = extract_streets(&objs);
         assert_eq!(streets.len(), 2);
     }
 
@@ -370,12 +340,11 @@ mod get_streets {
         let node_ids = vec![NodeId(2), NodeId(3)];
         add_way(WayId(41), "street b", node_ids, &mut objs);
 
-        let streets = get_streets(&objs);
+        let streets = extract_streets(&objs);
         assert_eq!(streets.len(), 2);
     }
 
-    fn create_segment(id: i64, coordinates: Vec<(f64, f64)>) -> Segment {
-        let way_id = WayId(id);
+    fn create_segment(way_id: i64, coordinates: Vec<(f64, f64)>) -> Segment {
         let geometry = SegmentGeometry::new(coordinates).unwrap();
         Segment { way_id, geometry }
     }
@@ -385,8 +354,12 @@ mod get_streets {
         let seg_1 = create_segment(42, vec![(0., 1.), (0., 3.)]);
         let seg_2 = create_segment(43, vec![(0., 3.), (1., 4.)]);
         let segments = vec![seg_1, seg_2];
-        let name = "some name".to_string();
-        let street = Street { name, segments };
+        let name = String::from("some name");
+        let street = Street {
+            name,
+            segments,
+            boundary: None,
+        };
         let length = street.length();
         assert_relative_eq!(length, 2.0 + 2.0_f64.sqrt(), epsilon = f64::EPSILON);
     }

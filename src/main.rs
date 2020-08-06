@@ -1,4 +1,5 @@
-use lib::{extract_streets, filter, process};
+use lib::output::Output;
+use lib::{boundaries, filter, objects, streets};
 use std::error::Error;
 use std::fs::File;
 use std::io;
@@ -7,26 +8,32 @@ use structopt::StructOpt;
 mod lib;
 
 #[derive(StructOpt)]
-struct SharedOpts {
+struct Cli {
     #[structopt(parse(from_os_str))]
     path: std::path::PathBuf,
+    #[structopt(subcommand)]
+    cmd: Command,
 }
 
 #[derive(StructOpt)]
-enum Cli {
+enum Command {
     Objects {
         #[structopt(short, long)]
         tags: String,
-        #[structopt(flatten)]
-        shared_opts: SharedOpts,
     },
     Streets {
-        #[structopt(flatten)]
-        shared_opts: SharedOpts,
         #[structopt(short, long)]
         geojson: bool,
         #[structopt(short, long)]
         name: Option<String>,
+        #[structopt(short, long)]
+        boundary: Option<u8>,
+    },
+    Boundaries {
+        #[structopt(short, long)]
+        geojson: bool,
+        #[structopt(short, long)]
+        levels: Option<Vec<u8>>,
     },
 }
 
@@ -34,19 +41,34 @@ fn main() -> Result<(), Box<dyn Error>> {
     let stdout = io::stdout();
     let mut handle = io::BufWriter::new(stdout);
     let args = Cli::from_args();
-    match args {
-        Cli::Objects { tags, shared_opts } => {
-            let file = File::open(shared_opts.path)?;
-            let groups = filter::parse(tags);
-            process(file, &mut handle, &groups)?;
+
+    let file = File::open(args.path)?;
+
+    match args.cmd {
+        Command::Objects { tags } => {
+            let groups = filter::parse(&tags);
+            let objects = objects(file, &groups)?;
+            objects.write_json_lines(&mut handle)?;
         }
-        Cli::Streets {
-            shared_opts,
+        Command::Streets {
             geojson,
             name,
+            boundary,
         } => {
-            let file = File::open(shared_opts.path)?;
-            extract_streets(file, &mut handle, geojson, name)?;
+            let streets = streets(file, name.as_deref(), boundary)?;
+            if geojson {
+                streets.write_geojson(&mut handle)?;
+            } else {
+                streets.write_json_lines(&mut handle)?;
+            }
+        }
+        Command::Boundaries { levels, geojson } => {
+            let boundaries = boundaries(file, levels)?;
+            if geojson {
+                boundaries.write_geojson(&mut handle)?;
+            } else {
+                boundaries.write_json_lines(&mut handle)?;
+            }
         }
     }
     Ok(())

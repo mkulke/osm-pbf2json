@@ -1,6 +1,6 @@
 use geo::prelude::*;
 use geo::Closest;
-use geo_types::{Coordinate, Geometry, Line, LineString, MultiPoint, Point, Polygon};
+use geo_types::{Coordinate, Geometry, Line, LineString, MultiPoint, MultiPolygon, Point, Polygon};
 use serde::{Deserialize, Serialize};
 use std::convert::{TryFrom, TryInto};
 
@@ -25,6 +25,60 @@ impl From<(f64, f64)> for Location {
 pub struct SegmentGeometry {
     bounding_box: BoundingBox,
     line_string: LineString<f64>,
+}
+
+#[derive(Clone, Debug)]
+pub struct BoundaryGeometry {
+    bounding_box: BoundingBox,
+    multi_polygon: MultiPolygon<f64>,
+}
+
+impl BoundaryGeometry {
+    pub fn new(multi_polygon: MultiPolygon<f64>) -> Result<Self, &'static str> {
+        let bounding_box = (&multi_polygon).try_into()?;
+        Ok(BoundaryGeometry {
+            bounding_box,
+            multi_polygon,
+        })
+    }
+
+    pub fn coordinates(&self) -> Vec<Vec<Vec<(f64, f64)>>> {
+        self.multi_polygon
+            .clone()
+            .into_iter()
+            .map(|polygon| {
+                let (exterior, interiours) = polygon.into_inner();
+                let mut rings = vec![exterior];
+                rings.extend(interiours);
+                rings
+            })
+            .map(|line_strings| {
+                line_strings
+                    .iter()
+                    .map(|ls| ls.points_iter().map(|p| (p.x(), p.y())).collect())
+                    .collect()
+            })
+            .collect()
+    }
+
+    pub fn sw_ne(&self) -> ([f64; 2], [f64; 2]) {
+        (self.bounding_box.sw, self.bounding_box.ne)
+    }
+
+    pub fn intersects(&self, geometry: &SegmentGeometry) -> bool {
+        self.multi_polygon
+            .0
+            .iter()
+            .any(|polygon| polygon.intersects(&geometry.line_string))
+    }
+
+    pub fn owns(&self, geometry: &SegmentGeometry) -> bool {
+        if let Some(centroid) = geometry.line_string.centroid() {
+            self.multi_polygon.contains(&centroid)
+        } else {
+            false
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -64,18 +118,29 @@ impl BoundingBox {
     }
 }
 
+impl TryFrom<&MultiPolygon<f64>> for BoundingBox {
+    type Error = &'static str;
+
+    fn try_from(multi_polygon: &MultiPolygon<f64>) -> Result<Self, Self::Error> {
+        let rect = multi_polygon
+            .bounding_rect()
+            .ok_or("cannot get bounding box for the given set of coordinates")?;
+        let sw = [rect.min().x, rect.min().y];
+        let ne = [rect.max().x, rect.max().y];
+        Ok(BoundingBox { sw, ne })
+    }
+}
+
 impl TryFrom<&LineString<f64>> for BoundingBox {
     type Error = &'static str;
 
     fn try_from(line_string: &LineString<f64>) -> Result<Self, Self::Error> {
-        line_string
+        let rect = line_string
             .bounding_rect()
-            .map(|rect| {
-                let sw = [rect.min().x, rect.min().y];
-                let ne = [rect.max().x, rect.max().y];
-                BoundingBox { sw, ne }
-            })
-            .ok_or("cannot get bounding box for the given set of coordinates")
+            .ok_or("cannot get bounding box for the given set of coordinates")?;
+        let sw = [rect.min().x, rect.min().y];
+        let ne = [rect.max().x, rect.max().y];
+        Ok(BoundingBox { sw, ne })
     }
 }
 
@@ -188,19 +253,6 @@ pub trait Midpoint {
     fn midpoint(&self) -> Option<(f64, f64)>;
 }
 
-fn get_closest_element<T: Into<Point<f64>> + Copy>(
-    elements: impl IntoIterator<Item = T>,
-    point: Point<f64>,
-) -> Option<T> {
-    elements.into_iter().min_by(|a, b| {
-        let a_point: Point<f64> = (*a).into();
-        let a_dis: f64 = point.euclidean_distance(&a_point);
-        let b_point: Point<f64> = (*b).into();
-        let b_dis: f64 = point.euclidean_distance(&b_point);
-        a_dis.partial_cmp(&b_dis).unwrap()
-    })
-}
-
 impl Midpoint for Vec<&SegmentGeometry> {
     fn midpoint(&self) -> Option<(f64, f64)> {
         let flattened: Vec<_> = self
@@ -236,8 +288,8 @@ impl From<&Bounds> for (Location, Location) {
     }
 }
 
-fn get_geometry(coordinates: Vec<(f64, f64)>) -> Option<Geometry<f64>> {
-    let line_string: LineString<f64> = coordinates.into();
+fn get_geometry(coordinates: &[(f64, f64)]) -> Option<Geometry<f64>> {
+    let line_string: LineString<f64> = coordinates.to_vec().into();
     let first = line_string.points_iter().next()?;
     let last = line_string.points_iter().last()?;
     if first == last {
@@ -264,20 +316,12 @@ fn get_bounds(geometry: &Geometry<f64>) -> Option<Bounds> {
 
 pub trait Centerable {
     fn get_centroid(&self) -> Option<Location>;
-    fn get_middle(&self) -> Option<Location>;
 }
 
 impl Centerable for Vec<(f64, f64)> {
     fn get_centroid(&self) -> Option<Location> {
-        let geometry = get_geometry(self.clone())?;
+        let geometry = get_geometry(self)?;
         geometry.get_centroid()
-    }
-
-    fn get_middle(&self) -> Option<Location> {
-        let line_string: LineString<f64> = self.clone().try_into().ok()?;
-        let centroid = line_string.centroid()?;
-        let closest_element = get_closest_element(line_string, centroid)?;
-        Some(closest_element.into())
     }
 }
 
@@ -290,16 +334,9 @@ impl Centerable for Geometry<f64> {
         }?;
         Some(point.into())
     }
-
-    fn get_middle(&self) -> Option<Location> {
-        let multi_points: MultiPoint<f64> = self.clone().try_into().ok()?;
-        let centroid = multi_points.centroid()?;
-        let closest_element = get_closest_element(multi_points, centroid)?;
-        Some(closest_element.into())
-    }
 }
 
-pub fn get_geo_info(coordinates: Vec<(f64, f64)>) -> (Option<Location>, Option<Bounds>) {
+pub fn get_geo_info(coordinates: &[(f64, f64)]) -> (Option<Location>, Option<Bounds>) {
     if let Some(geo) = get_geometry(coordinates) {
         let centroid = geo.get_centroid();
         let bounds = get_bounds(&geo);
@@ -340,16 +377,6 @@ mod tests {
     }
 
     #[test]
-    fn get_middle_for_line() {
-        let coordinates = vec![(9., 50.), (9., 51.), (10., 51.)];
-        // 1/m    2
-        //
-        //
-        // 0
-        approx_eq([9., 51.], coordinates.get_middle());
-    }
-
-    #[test]
     fn midpoint() {
         let coordinates = vec![(9., 50.), (9., 51.), (10., 51.)];
         let geometry_1 = SegmentGeometry::new(coordinates).unwrap();
@@ -368,7 +395,7 @@ mod tests {
     #[test]
     fn get_geo_info_open() {
         let coordinates = vec![(5., 49.), (6., 50.), (7., 49.)];
-        let (centroid, bounds) = get_geo_info(coordinates);
+        let (centroid, bounds) = get_geo_info(&coordinates);
         let reference_loc = Location { lat: 49.5, lon: 6. };
         assert_eq!(centroid.unwrap(), reference_loc);
         let reference_bounds = Bounds {
@@ -383,7 +410,7 @@ mod tests {
     #[test]
     fn get_geo_info_closed() {
         let coordinates = vec![(5., 49.), (6., 50.), (7., 49.), (5., 49.)];
-        let (centroid, bounds) = get_geo_info(coordinates);
+        let (centroid, bounds) = get_geo_info(&coordinates);
         let reference_loc = Location {
             lat: 49.333_333,
             lon: 6.,

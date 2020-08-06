@@ -1,6 +1,7 @@
 extern crate osm_pbf2json;
 
-use osm_pbf2json::{extract_streets, filter, process};
+use osm_pbf2json::output::Output;
+use osm_pbf2json::{boundaries, filter, objects, streets};
 use std::fs::File;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 
@@ -14,10 +15,10 @@ fn get_string(cursor: &mut Cursor<Vec<u8>>) -> String {
 #[test]
 fn find_fountains_or_townhalls() {
     let mut cursor = Cursor::new(Vec::new());
-    let groups = filter::parse("amenity~fountain+tourism,amenity~townhall".to_string());
+    let groups = filter::parse("amenity~fountain+tourism,amenity~townhall");
     let file = File::open("./tests/data/alexanderplatz.pbf").unwrap();
-    process(file, &mut cursor, &groups).unwrap();
-
+    let objects = objects(file, &groups).unwrap();
+    objects.write_json_lines(&mut cursor).unwrap();
     let string = get_string(&mut cursor);
     let lines: Vec<&str> = string.trim().split('\n').collect();
     assert_eq!(lines.len(), 4);
@@ -32,23 +33,55 @@ fn find_fountains_or_townhalls() {
 #[test]
 fn find_bike_parking_for_six() {
     let mut cursor = Cursor::new(Vec::new());
-    let groups = filter::parse("amenity~bicycle_parking+capacity~6".to_string());
+    let groups = filter::parse("amenity~bicycle_parking+capacity~6");
     let file = File::open("./tests/data/alexanderplatz.pbf").unwrap();
-    process(file, &mut cursor, &groups).unwrap();
-
+    let objects = objects(file, &groups).unwrap();
+    objects.write_json_lines(&mut cursor).unwrap();
     let string = get_string(&mut cursor);
     let lines: Vec<&str> = string.trim().split('\n').collect();
     assert_eq!(lines.len(), 14);
 }
 
 #[test]
-fn extract_rosa_luxemburg_street() {
+fn rosa_luxemburg_street() {
     let mut cursor = Cursor::new(Vec::new());
-    let name = "Rosa-Luxemburg-Straße".to_string();
+    let name = "Rosa-Luxemburg-Straße";
     let file = File::open("./tests/data/alexanderplatz.pbf").unwrap();
-    extract_streets(file, &mut cursor, false, Some(name)).unwrap();
+    let streets = streets(file, Some(name), None).unwrap();
+    streets.write_json_lines(&mut cursor).unwrap();
     let string = get_string(&mut cursor);
     let lines: Vec<&str> = string.trim().split('\n').collect();
     assert_eq!(lines.len(), 1);
     assert!(lines[0].contains("Rosa-Luxemburg-Straße"));
+}
+
+#[test]
+fn split_street_by_boundary() {
+    let mut cursor = Cursor::new(Vec::new());
+    let name = "Wilhelmstraße";
+    let file = File::open("./tests/data/wilhelmstrasse.pbf").unwrap();
+    let streets = streets(file, Some(name), Some(10)).unwrap();
+    streets.write_json_lines(&mut cursor).unwrap();
+    let string = get_string(&mut cursor);
+    let mut lines: Vec<&str> = string.trim().split('\n').collect();
+    assert_eq!(lines.len(), 2);
+    lines.sort();
+    assert!(lines[0].contains("Wilhelmstraße"));
+    assert!(lines[0].contains("Kreuzberg"));
+    assert!(lines[1].contains("Wilhelmstraße"));
+    assert!(lines[1].contains("Mitte"));
+}
+
+#[test]
+fn extract_boundaries() {
+    let mut cursor = Cursor::new(Vec::new());
+    let file = File::open("./tests/data/wilhelmstrasse.pbf").unwrap();
+    let boundaries = boundaries(file, Some(vec![10])).unwrap();
+    boundaries.write_json_lines(&mut cursor).unwrap();
+    let string = get_string(&mut cursor);
+    let mut lines: Vec<&str> = string.trim().split('\n').collect();
+    assert_eq!(lines.len(), 2);
+    lines.sort();
+    assert!(lines[0].contains("Kreuzberg"));
+    assert!(lines[1].contains("Mitte"));
 }
