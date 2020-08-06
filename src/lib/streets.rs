@@ -75,7 +75,7 @@ impl Street {
                 let boundary = boundaries
                     .iter()
                     .find(|boundary| boundary.owns(&segment))
-                    .or(boundaries.first())?;
+                    .or_else(|| boundaries.first())?;
                 Some((boundary.name.as_str(), segment))
             })
             .into_group_map()
