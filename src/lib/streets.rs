@@ -72,7 +72,10 @@ impl Street {
         segments
             .into_iter()
             .filter_map(|segment| {
-                let boundary = boundaries.iter().find(|boundary| boundary.owns(&segment))?;
+                let boundary = boundaries
+                    .iter()
+                    .find(|boundary| boundary.owns(&segment))
+                    .or(boundaries.first())?;
                 Some((boundary.name.as_str(), segment))
             })
             .into_group_map()
