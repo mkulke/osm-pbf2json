@@ -2,6 +2,7 @@
 
 [![Build Status](https://travis-ci.org/mkulke/osm-pbf2json.svg?branch=master)](https://travis-ci.org/mkulke/osm-pbf2json)
 [![codecov](https://codecov.io/gh/mkulke/osm-pbf2json/branch/master/graph/badge.svg)](https://codecov.io/gh/mkulke/osm-pbf2json)
+[![crates.io](https://img.shields.io/crates/v/osm_pbf2json.svg)](https://crates.io/crates/osm_pbf2json)
 
 A parser/filter for OSM protobuf bundles
 
