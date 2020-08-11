@@ -29,9 +29,9 @@ docker run \
   -v $PWD/src:/build/src \
   -v $PWD/benches:/build/benches \
   -v $PWD/tests:/build/tests \
-  -v $PWD/docker-target:/build/target \
+  -v $PWD/docker-target:/build/target:cached \
   -w /build \
-  rust:1.43 cargo build --release
+  rust:1.45.2 cargo build --release
 ```
 
 ## Run
