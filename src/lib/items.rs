@@ -60,17 +60,25 @@ pub mod osm {
         tags: Tags,
         centroid: Option<Location>,
         bounds: Option<Bounds>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        coordinates: Option<Vec<(f64, f64)>>,
     }
 
     impl Way {
-        pub fn new(id: i64, tags: Tags, coordinates: &[(f64, f64)]) -> Self {
+        pub fn new(id: i64, tags: Tags, coordinates: &[(f64, f64)], retain_coordinates: bool) -> Self {
             let (centroid, bounds) = get_geo_info(coordinates);
+            let coordinates = if retain_coordinates {
+                Some(coordinates.to_vec())
+            } else {
+                None
+            };
             Way {
                 id,
                 osm_type: "way",
                 tags,
                 centroid,
                 bounds,
+                coordinates,
             }
         }
     }
@@ -83,17 +91,25 @@ pub mod osm {
         tags: Tags,
         centroid: Option<Location>,
         bounds: Option<Bounds>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        coordinates: Option<Vec<(f64, f64)>>,
     }
 
     impl Relation {
-        pub fn new(id: i64, tags: Tags, coordinates: &[(f64, f64)]) -> Self {
+        pub fn new(id: i64, tags: Tags, coordinates: &[(f64, f64)], retain_coordinates: bool) -> Self {
             let (centroid, bounds) = get_geo_info(coordinates);
+            let coordinates = if retain_coordinates {
+                Some(coordinates.to_vec())
+            } else {
+                None
+            };
             Relation {
                 id,
                 osm_type: "relation",
                 tags,
                 centroid,
                 bounds,
+                coordinates,
             }
         }
     }

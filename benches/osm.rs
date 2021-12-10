@@ -9,7 +9,7 @@ pub fn process_bench(c: &mut Criterion) {
     group.bench_function("process", |b| {
         b.iter(|| {
             let file = File::open("./tests/data/alexanderplatz.pbf").unwrap();
-            objects(file, &groups).unwrap();
+            objects(file, Some(&groups), false).unwrap();
         })
     });
     group.finish();

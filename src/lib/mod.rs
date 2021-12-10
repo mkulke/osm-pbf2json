@@ -200,17 +200,21 @@ pub fn streets(
 /// let cond_1 = Condition::new("surface", Some("cobblestone"));
 /// let cond_2 = Condition::new("highway", None);
 /// let group = Group { conditions: vec![cond_1, cond_2] };
-/// let cobblestone_ways = objects(file, &vec![group]).unwrap();
+/// let cobblestone_ways = objects(file, Some(&vec![group]), false).unwrap();
 /// assert_eq!(cobblestone_ways.len(), 4);
 /// ```
-pub fn objects(file: impl Seek + Read, groups: &[Group]) -> Result<Vec<Object>, Box<dyn Error>> {
+pub fn objects(file: impl Seek + Read, groups: Option<&[Group]>, retain_coordinates: bool) -> Result<Vec<Object>, Box<dyn Error>> {
     let mut pbf = OsmPbfReader::new(file);
-    let objs = pbf.get_objs_and_deps(|obj| obj.filter(groups))?;
+
+    let objs = match groups {
+        Some(grps) => pbf.get_objs_and_deps(|obj| obj.filter(grps))?,
+        None => pbf.get_objs_and_deps(|_| true)?,
+    };
 
     let objects = objs
         .values()
         .filter_map(|obj| {
-            if !obj.filter(groups) {
+            if groups.is_some() && !obj.filter(groups?) {
                 return None;
             }
             let object = match obj {
@@ -220,12 +224,12 @@ pub fn objects(file: impl Seek + Read, groups: &[Group]) -> Result<Vec<Object>, 
                 }
                 OsmObj::Way(obj) => {
                     let coordinates = obj.get_coordinates(&objs);
-                    let way = osm::Way::new(obj.id.0, obj.tags.clone(), &coordinates);
+                    let way = osm::Way::new(obj.id.0, obj.tags.clone(), &coordinates, retain_coordinates);
                     Object::Way(way)
                 }
                 OsmObj::Relation(obj) => {
                     let coordinates = obj.get_coordinates(&objs, &mut vec![]);
-                    let relation = osm::Relation::new(obj.id.0, obj.tags.clone(), &coordinates);
+                    let relation = osm::Relation::new(obj.id.0, obj.tags.clone(), &coordinates, retain_coordinates);
                     Object::Relation(relation)
                 }
             };
