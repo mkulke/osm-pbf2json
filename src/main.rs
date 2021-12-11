@@ -48,8 +48,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     match args.cmd {
         Command::Objects { tags, retain_coordinates } => {
-            let objects = if tags.is_some() {
-                let groups = filter::parse(&tags.unwrap());
+            let objects = if let Some(tags) = tags {
+                let groups = filter::parse(&tags);
                 objects(file, Some(&groups), retain_coordinates)?
             } else {
                 objects(file, None, retain_coordinates)?
