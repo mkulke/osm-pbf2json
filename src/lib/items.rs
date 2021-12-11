@@ -94,11 +94,7 @@ pub mod osm {
     impl Relation {
         pub fn new(id: i64, tags: Tags, coordinates: &[(f64, f64)], retain_coordinates: bool) -> Self {
             let (centroid, bounds) = get_geo_info(coordinates);
-            let coordinates = if retain_coordinates {
-                Some(coordinates.to_vec())
-            } else {
-                None
-            };
+            let coordinates = retain_coordinates.then(|| coordinates.into());
             Relation {
                 id,
                 osm_type: "relation",
