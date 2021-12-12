@@ -38,7 +38,9 @@ docker run \
 
 ### Retrieve Objects
 
-You have to specify a query via `--tags` or `-t`, the syntax is rather simple:
+Centroid and bounds of Way and Relation objects are provided by default, however the `--retain-coordinates` or `-r` flag will also expose the list of coordinates for each object (similar to the `streets` command).
+
+By default the `objects` command will extract all objects. To select a set of objects by their tags you can specify a query via `--tags` or `-t`, the syntax is rather simple:
 
 By stating a key (`-t amenity`) it will select all entities which are tagged using that key. To further narrow down the results, a specific value can be given using a `~` field separator (`-t 'amenity~fountain'`). To check the presence of multiple tags for the same entity, statements can be combined using the `+` operator (`-t 'amenity~fountain+tourism'`). Finally, options can be specified by concatenating groups of statements with `,` (`-t 'amenity~fountain+tourism,amenity~townhall'`). If an entity matches the criteria of either group it will be included in the output.
 

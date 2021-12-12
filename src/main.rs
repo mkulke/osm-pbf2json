@@ -19,7 +19,9 @@ struct Cli {
 enum Command {
     Objects {
         #[structopt(short, long)]
-        tags: String,
+        tags: Option<String>,
+        #[structopt(short, long)]
+        retain_coordinates: bool,
     },
     Streets {
         #[structopt(short, long)]
@@ -45,9 +47,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     let file = File::open(args.path)?;
 
     match args.cmd {
-        Command::Objects { tags } => {
-            let groups = filter::parse(&tags);
-            let objects = objects(file, &groups)?;
+        Command::Objects { tags, retain_coordinates } => {
+            let objects = if let Some(tags) = tags {
+                let groups = filter::parse(&tags);
+                objects(file, Some(&groups), retain_coordinates)?
+            } else {
+                objects(file, None, retain_coordinates)?
+            };
             objects.write_json_lines(&mut handle)?;
         }
         Command::Streets {

@@ -18,7 +18,7 @@ fn find_fountains_or_townhalls() {
     let mut cursor = Cursor::new(Vec::new());
     let groups = filter::parse("amenity~fountain+tourism,amenity~townhall");
     let file = File::open("./tests/data/alexanderplatz.pbf").unwrap();
-    let objects = objects(file, &groups).unwrap();
+    let objects = objects(file, Some(&groups), false).unwrap();
     objects.write_json_lines(&mut cursor).unwrap();
     let string = get_string(&mut cursor);
     let lines: Vec<&str> = string.trim().split('\n').collect();
@@ -36,7 +36,7 @@ fn find_bike_parking_for_six() {
     let mut cursor = Cursor::new(Vec::new());
     let groups = filter::parse("amenity~bicycle_parking+capacity~6");
     let file = File::open("./tests/data/alexanderplatz.pbf").unwrap();
-    let objects = objects(file, &groups).unwrap();
+    let objects = objects(file, Some(&groups), false).unwrap();
     objects.write_json_lines(&mut cursor).unwrap();
     let string = get_string(&mut cursor);
     let lines: Vec<&str> = string.trim().split('\n').collect();
