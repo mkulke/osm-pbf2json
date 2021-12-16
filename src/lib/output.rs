@@ -1,6 +1,7 @@
 use super::geo::Length;
 use super::geojson::{Entity, Geometry};
-use super::items::{AdminBoundary, Object, Street};
+use super::items::osm::Object;
+use super::items::{AdminBoundary, Street};
 use rand::random;
 use serde::{Deserialize, Serialize};
 use serde_json::to_string;
@@ -85,11 +86,7 @@ struct JSONStreet {
 impl Output for Vec<Object> {
     fn write_json_lines(&self, writer: &mut dyn Write) -> Result<(), Box<dyn Error>> {
         for object in self.iter() {
-            let json = match object {
-                Object::Node(node) => to_string(node),
-                Object::Way(way) => to_string(way),
-                Object::Relation(rel) => to_string(rel),
-            }?;
+            let json = to_string(object)?;
             writeln!(writer, "{}", json)?;
         }
         Ok(())

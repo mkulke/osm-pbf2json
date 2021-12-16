@@ -33,8 +33,7 @@ fn parse_condition(condition_str: &str) -> Condition {
 }
 
 fn parse_group(group_str: &str) -> Group {
-    let condition_strs: Vec<&str> = group_str.split('+').collect();
-    let conditions = condition_strs.into_iter().map(parse_condition).collect();
+    let conditions = group_str.split('+').map(parse_condition).collect();
     Group { conditions }
 }
 
@@ -59,8 +58,7 @@ fn parse_group(group_str: &str) -> Group {
 /// assert_eq!(group.conditions.len(), 2);
 /// ```
 pub fn parse(selector_str: &str) -> Vec<Group> {
-    let group_strs: Vec<&str> = selector_str.split(',').collect();
-    group_strs.into_iter().map(parse_group).collect()
+    selector_str.split(',').map(parse_group).collect()
 }
 
 fn check_condition(tags: &Tags, condition: &Condition) -> bool {
@@ -110,13 +108,13 @@ mod tests {
         let node = new_node();
         let obj = OsmObj::Node(node);
 
-        assert_eq!(obj.filter(&[group.clone()]), false);
+        assert!(!obj.filter(&[group.clone()]));
 
         let mut node = new_node();
         node.tags.insert("amenity".into(), "theatre".into());
         let obj = OsmObj::Node(node);
 
-        assert_eq!(obj.filter(&[group]), true);
+        assert!(obj.filter(&[group]));
     }
 
     #[test]
@@ -128,12 +126,12 @@ mod tests {
         let mut node = new_node();
         node.tags.insert("amenity".into(), "theatre".into());
         let obj = OsmObj::Node(node);
-        assert_eq!(obj.filter(&[group.clone()]), true);
+        assert!(obj.filter(&[group.clone()]));
 
         let mut node = new_node();
         node.tags.insert("amenity".into(), "cinema".into());
         let obj = OsmObj::Node(node);
-        assert_eq!(obj.filter(&[group]), false);
+        assert!(!obj.filter(&[group]));
     }
 
     #[test]
@@ -150,7 +148,7 @@ mod tests {
         node.tags.insert("name".into(), "Waldbühne".into());
         let obj = OsmObj::Node(node);
 
-        assert_eq!(obj.filter(&[group_1, group_2]), true);
+        assert!(obj.filter(&[group_1, group_2]));
     }
 
     #[test]
@@ -166,12 +164,12 @@ mod tests {
         node.tags.insert("name".into(), "Waldbühne".into());
         let obj = OsmObj::Node(node);
 
-        assert_eq!(obj.filter(&[group]), true);
+        assert!(obj.filter(&[group]));
 
         let conditions = vec![condition_2, condition_3];
         let group = Group { conditions };
 
-        assert_eq!(obj.filter(&[group]), false);
+        assert!(!obj.filter(&[group]));
     }
 
     #[test]

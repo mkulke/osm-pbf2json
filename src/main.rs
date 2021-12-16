@@ -47,7 +47,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     let file = File::open(args.path)?;
 
     match args.cmd {
-        Command::Objects { tags, retain_coordinates } => {
+        Command::Objects {
+            tags,
+            retain_coordinates,
+        } => {
             let objects = if let Some(tags) = tags {
                 let groups = filter::parse(&tags);
                 objects(file, Some(&groups), retain_coordinates)?

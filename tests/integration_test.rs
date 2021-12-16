@@ -39,8 +39,8 @@ fn find_bike_parking_for_six() {
     let objects = objects(file, Some(&groups), false).unwrap();
     objects.write_json_lines(&mut cursor).unwrap();
     let string = get_string(&mut cursor);
-    let lines: Vec<&str> = string.trim().split('\n').collect();
-    assert_eq!(lines.len(), 14);
+    let lines = string.trim().split('\n');
+    assert_eq!(lines.count(), 14);
 }
 
 #[test]
@@ -81,7 +81,7 @@ fn split_street_by_boundary() {
     let string = get_string(&mut cursor);
     let mut lines: Vec<&str> = string.trim().split('\n').collect();
     assert_eq!(lines.len(), 2);
-    lines.sort();
+    lines.sort_unstable();
     assert!(lines[0].contains("Wilhelmstraße"));
     assert!(lines[0].contains("Kreuzberg"));
     assert!(lines[1].contains("Wilhelmstraße"));
@@ -112,7 +112,7 @@ fn extract_boundaries() {
     let string = get_string(&mut cursor);
     let mut lines: Vec<&str> = string.trim().split('\n').collect();
     assert_eq!(lines.len(), 2);
-    lines.sort();
+    lines.sort_unstable();
     assert!(lines[0].contains("Kreuzberg"));
     assert!(lines[1].contains("Mitte"));
 }

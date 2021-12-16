@@ -1,7 +1,7 @@
 //! A parser/filter for OSM protobuf bundles.
 
 use self::geo::get_compound_coordinates;
-use self::items::{osm, AdminBoundary, Object, Street};
+use self::items::{osm, AdminBoundary, Street};
 use admin::get_boundaries;
 use filter::{Condition, Filter, Group};
 use osmpbfreader::objects::{OsmId, OsmObj, Relation, RelationId, Way};
@@ -203,7 +203,11 @@ pub fn streets(
 /// let cobblestone_ways = objects(file, Some(&vec![group]), false).unwrap();
 /// assert_eq!(cobblestone_ways.len(), 4);
 /// ```
-pub fn objects(file: impl Seek + Read, groups: Option<&[Group]>, retain_coordinates: bool) -> Result<Vec<Object>, Box<dyn Error>> {
+pub fn objects(
+    file: impl Seek + Read,
+    groups: Option<&[Group]>,
+    retain_coordinates: bool,
+) -> Result<Vec<osm::Object>, Box<dyn Error>> {
     let mut pbf = OsmPbfReader::new(file);
 
     let objs = match groups {
@@ -217,20 +221,24 @@ pub fn objects(file: impl Seek + Read, groups: Option<&[Group]>, retain_coordina
             if groups.is_some() && !obj.filter(groups?) {
                 return None;
             }
+
             let object = match obj {
                 OsmObj::Node(obj) => {
-                    let node = osm::Node::new(obj.id.0, obj.lat(), obj.lon(), obj.tags.clone());
-                    Object::Node(node)
+                    let geo_info = osm::GeoInfo::Point {
+                        lon: obj.lon(),
+                        lat: obj.lat(),
+                    };
+                    osm::Object::new(obj.id.0, "node", obj.tags.clone(), geo_info)
                 }
                 OsmObj::Way(obj) => {
                     let coordinates = obj.get_coordinates(&objs);
-                    let way = osm::Way::new(obj.id.0, obj.tags.clone(), &coordinates, retain_coordinates);
-                    Object::Way(way)
+                    let geo_info = osm::GeoInfo::new_shape(&coordinates, retain_coordinates);
+                    osm::Object::new(obj.id.0, "way", obj.tags.clone(), geo_info)
                 }
                 OsmObj::Relation(obj) => {
                     let coordinates = obj.get_coordinates(&objs, &mut vec![]);
-                    let relation = osm::Relation::new(obj.id.0, obj.tags.clone(), &coordinates, retain_coordinates);
-                    Object::Relation(relation)
+                    let geo_info = osm::GeoInfo::new_shape(&coordinates, retain_coordinates);
+                    osm::Object::new(obj.id.0, "relation", obj.tags.clone(), geo_info)
                 }
             };
             Some(object)

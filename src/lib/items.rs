@@ -19,35 +19,55 @@ pub struct Segment {
     pub geometry: SegmentGeometry,
 }
 
-pub enum Object {
-    Node(osm::Node),
-    Way(osm::Way),
-    Relation(osm::Relation),
-}
-
 pub mod osm {
     use super::super::geo::{get_geo_info, Bounds, Location};
     use osmpbfreader::objects::Tags;
     use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Deserialize)]
-    pub struct Node {
+    #[serde(untagged)]
+    pub enum GeoInfo {
+        Point {
+            lon: f64,
+            lat: f64,
+        },
+        Shape {
+            centroid: Option<Location>,
+            bounds: Option<Bounds>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            coordinates: Option<Vec<(f64, f64)>>,
+        },
+    }
+
+    impl GeoInfo {
+        pub fn new_shape(coordinates: &[(f64, f64)], retain_coordinates: bool) -> Self {
+            let (centroid, bounds) = get_geo_info(coordinates);
+            let coordinates = retain_coordinates.then(|| coordinates.into());
+            GeoInfo::Shape {
+                centroid,
+                bounds,
+                coordinates,
+            }
+        }
+    }
+
+    #[derive(Serialize, Deserialize)]
+    pub struct Object {
         id: i64,
         #[serde(rename = "type")]
         osm_type: &'static str,
-        lat: f64,
-        lon: f64,
         tags: Tags,
+        #[serde(flatten)]
+        geo_info: GeoInfo,
     }
 
-    impl Node {
-        pub fn new(id: i64, lat: f64, lon: f64, tags: Tags) -> Self {
-            Node {
+    impl Object {
+        pub fn new(id: i64, osm_type: &'static str, tags: Tags, geo_info: GeoInfo) -> Self {
+            Self {
                 id,
-                osm_type: "node",
-                lat,
-                lon,
+                osm_type,
                 tags,
+                geo_info,
             }
         }
     }
@@ -62,47 +82,5 @@ pub mod osm {
         bounds: Option<Bounds>,
         #[serde(skip_serializing_if = "Option::is_none")]
         coordinates: Option<Vec<(f64, f64)>>,
-    }
-
-    impl Way {
-        pub fn new(id: i64, tags: Tags, coordinates: &[(f64, f64)], retain_coordinates: bool) -> Self {
-            let (centroid, bounds) = get_geo_info(coordinates);
-            let coordinates = retain_coordinates.then(|| coordinates.into());
-            Way {
-                id,
-                osm_type: "way",
-                tags,
-                centroid,
-                bounds,
-                coordinates,
-            }
-        }
-    }
-
-    #[derive(Serialize, Deserialize)]
-    pub struct Relation {
-        id: i64,
-        #[serde(rename = "type")]
-        osm_type: &'static str,
-        tags: Tags,
-        centroid: Option<Location>,
-        bounds: Option<Bounds>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        coordinates: Option<Vec<(f64, f64)>>,
-    }
-
-    impl Relation {
-        pub fn new(id: i64, tags: Tags, coordinates: &[(f64, f64)], retain_coordinates: bool) -> Self {
-            let (centroid, bounds) = get_geo_info(coordinates);
-            let coordinates = retain_coordinates.then(|| coordinates.into());
-            Relation {
-                id,
-                osm_type: "relation",
-                tags,
-                centroid,
-                bounds,
-                coordinates,
-            }
-        }
     }
 }

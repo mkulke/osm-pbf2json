@@ -1,7 +1,7 @@
 [package]
 name = "osm_pbf2json"
-version = "0.2.2"
-authors = ["magnus kulke <mkulke@gmail.com>"]
+version = "0.3.0"
+authors = ["magnus kulke <mkulke@gmail.com>", "edouard poitras <edouardpoitras@gmail.com>"]
 edition = "2018"
 homepage = "https://github.com/mkulke/osm-pbf2json"
 readme = "Readme.md"
